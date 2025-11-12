@@ -107,6 +107,7 @@
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_firewalld
   vars:
+    firewalld_manage_kernel: false
     firewalld_manage_selinux: true
     firewalld_selinux_state: permissive
     firewalld_zones_present:
@@ -129,6 +130,7 @@
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_firewalld
   vars:
+    firewalld_manage_kernel: false
     firewalld_manage_selinux: true
     firewalld_selinux_state: permissive
     firewalld_zones_present:
