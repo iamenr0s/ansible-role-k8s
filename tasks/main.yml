@@ -6,20 +6,44 @@
   when:
     - k8s_manage_repos
     - ansible_os_family == 'Debian'
+  become: true
   block:
-    - name: "Include pkg-management role for Debian/Ubuntu"
-      ansible.builtin.include_role:
-        name: iamenr0s.ansible_role_pkg_management
-      vars:
-        pkg_apt_keys:
-          - url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/Release.key"
-            dest: "{{ k8s_apt_key_dest }}"
-        pkg_apt_repositories:
-          - repo: "deb [signed-by={{ k8s_apt_key_dest }}] https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/ /"
-            filename: "{{ k8s_apt_repo_filename }}"
-            state: present
-            update_cache: true
-        pkg_install: "{{ k8s_packages }}"
+    - name: "Ensure apt keyrings directory exists"
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: "Download Kubernetes Release.key"
+      ansible.builtin.get_url:
+        url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/Release.key"
+        dest: "/etc/apt/keyrings/kubernetes-apt-keyring.asc"
+        mode: "0644"
+        force: true
+
+    - name: "Dearmor Kubernetes apt key"
+      ansible.builtin.command: >-
+        gpg --dearmor -o {{ k8s_apt_key_dest }} /etc/apt/keyrings/kubernetes-apt-keyring.asc
+      args:
+        creates: "{{ k8s_apt_key_dest }}"
+
+    - name: "Ensure keyring file permissions"
+      ansible.builtin.file:
+        path: "{{ k8s_apt_key_dest }}"
+        mode: "0644"
+        state: file
+
+    - name: "Add Kubernetes apt repository"
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by={{ k8s_apt_key_dest }}] https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/ /"
+        filename: "{{ k8s_apt_repo_filename }}"
+        state: present
+        update_cache: true
+
+    - name: "Install Kubernetes packages"
+      ansible.builtin.apt:
+        name: "{{ k8s_packages }}"
+        state: present
 
 - name: "Kubernetes | Fedora | Configure repo and install packages"
   when:
