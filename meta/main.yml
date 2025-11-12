@@ -22,11 +22,8 @@ galaxy_info:
         - "40"
         - "41"
         - "42"
-    - name: "Rocky"
-      versions:
-        - "8.0"
-        - "9.0"
-        - "10.0"
+    # Rocky Linux is covered under EL support; remove explicit entry to satisfy
+    # ansible-lint schema expectations for platforms.
     - name: "Ubuntu"
       versions:
         - "focal"

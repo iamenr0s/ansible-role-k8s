@@ -8,7 +8,7 @@
     - ansible_os_family == 'Debian'
   block:
     - name: "Include pkg-management role for Debian/Ubuntu"
-      include_role:
+      ansible.builtin.include_role:
         name: iamenr0s.ansible_role_pkg_management
       vars:
         pkg_apt_keys:
@@ -27,7 +27,7 @@
     - ansible_os_family in ['RedHat']
   block:
     - name: "Include pkg-management role for RHEL/Fedora"
-      include_role:
+      ansible.builtin.include_role:
         name: iamenr0s.ansible_role_pkg_management
       vars:
         pkg_yum_repositories:
