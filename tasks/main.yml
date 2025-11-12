@@ -25,7 +25,6 @@
   when:
     - k8s_manage_repos
     - ansible_distribution == 'Fedora'
-  become: true
   block:
     - name: "Configure Kubernetes repo on Fedora"
       ansible.builtin.yum_repository:
@@ -67,7 +66,6 @@
 - name: "Kubernetes | Enable and start kubelet"
   when:
     - k8s_enable_kubelet
-  become: true
   ansible.builtin.systemd:
     name: kubelet
     enabled: true
@@ -76,7 +74,6 @@
 - name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
-  become: true
   block:
     - name: "Set pod CIDR for Flannel if requested"
       when:
@@ -148,7 +145,6 @@
 - name: "Kubernetes | Workers | Join cluster"
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
-  become: true
   block:
     - name: "Check if node already joined"
       ansible.builtin.stat:
