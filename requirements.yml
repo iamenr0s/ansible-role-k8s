@@ -12,3 +12,4 @@ collections:
 # Roles
 roles:
   - name: iamenr0s.ansible_role_pkg_management
+  - name: iamenr0s.ansible_role_firewalld

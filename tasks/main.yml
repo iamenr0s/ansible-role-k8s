@@ -101,6 +101,44 @@
     enabled: true
     state: started
 
+- name: "Kubernetes | Control Plane | Configure firewalld and SELinux"
+  when:
+    - inventory_hostname in groups[k8s_control_plane_group] | default([])
+  ansible.builtin.include_role:
+    name: iamenr0s.ansible_role_firewalld
+  vars:
+    firewalld_manage_selinux: true
+    firewalld_selinux_state: permissive
+    firewalld_zones_present:
+      - public
+    firewalld_ports:
+      - { port: "6443/tcp", zone: "public" }
+      - { port: "2379/tcp", zone: "public" }
+      - { port: "2380/tcp", zone: "public" }
+      - { port: "10250/tcp", zone: "public" }
+      - { port: "10251/tcp", zone: "public" }
+      - { port: "10252/tcp", zone: "public" }
+      - { port: "10257/tcp", zone: "public" }
+      - { port: "10259/tcp", zone: "public" }
+      - { port: "179/tcp", zone: "public" }
+      - { port: "4789/udp", zone: "public" }
+
+- name: "Kubernetes | Workers | Configure firewalld and SELinux"
+  when:
+    - inventory_hostname in groups[k8s_workers_group] | default([])
+  ansible.builtin.include_role:
+    name: iamenr0s.ansible_role_firewalld
+  vars:
+    firewalld_manage_selinux: true
+    firewalld_selinux_state: permissive
+    firewalld_zones_present:
+      - public
+    firewalld_ports:
+      - { port: "179/tcp", zone: "public" }
+      - { port: "10250/tcp", zone: "public" }
+      - { port: "30000-32767/tcp", zone: "public" }
+      - { port: "4789/udp", zone: "public" }
+
 - name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])

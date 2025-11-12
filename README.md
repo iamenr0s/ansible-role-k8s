@@ -134,6 +134,13 @@ Notes:
 - Workers consume the join command and run `kubeadm join` if not already part of the cluster.
 - You can add extra flags via `k8s_init_extra_args` and `k8s_join_extra_args`.
 
+## Firewall and SELinux
+- SELinux: set to `permissive` on all nodes.
+- Control-plane firewall ports (zone `public`):
+  - `6443/tcp`, `2379/tcp`, `2380/tcp`, `10250/tcp`, `10251/tcp`, `10252/tcp`, `10257/tcp`, `10259/tcp`, `179/tcp`, `4789/udp`
+- Worker firewall ports (zone `public`):
+  - `179/tcp`, `10250/tcp`, `30000-32767/tcp`, `4789/udp`
+
 ### Cilium CIDR Guidance
 
 - Cilium IPAM options:
