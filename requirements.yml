@@ -13,3 +13,4 @@ collections:
 roles:
   - name: iamenr0s.ansible_role_pkg_management
   - name: iamenr0s.ansible_role_firewalld
+  - name: iamenr0s.ansible-role-kernel-configuration
