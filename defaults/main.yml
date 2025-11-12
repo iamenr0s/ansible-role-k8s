@@ -1,1 +1,43 @@
 ---
+
+# Kubernetes installation defaults
+
+# Channel version used for pkgs.k8s.io repositories, e.g. "v1.32"
+k8s_version_channel: "v1.32"
+
+# Packages to install
+k8s_packages:
+  - kubelet
+  - kubeadm
+  - kubectl
+
+# Manage repository configuration inside this role
+k8s_manage_repos: true
+
+# Enable and start kubelet after installation
+k8s_enable_kubelet: true
+
+# Debian/Ubuntu-specific settings
+k8s_apt_key_dest: "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+k8s_apt_repo_filename: "kubernetes.list"
+
+# RHEL/Fedora-specific settings
+k8s_yum_repo_name: "kubernetes"
+k8s_disable_excludes: "all"
+
+# Cluster init/join settings
+k8s_control_plane_group: "k8s_control_plane"
+k8s_workers_group: "k8s_workers"
+k8s_use_pod_cidr: false                    # For Cilium, usually keep this false
+k8s_pod_network_cidr: "10.244.0.0/16"    # If true, ensure this matches your CNI
+k8s_init_extra_args: ""                 # additional kubeadm init args
+k8s_join_extra_args: ""                 # additional kubeadm join args
+k8s_kubeconfig_setup: true               # copy admin.conf to root .kube/config
+
+# Flannel CNI installation
+k8s_install_flannel: true
+k8s_flannel_pod_cidr: "10.244.0.0/16"
+# Pin to a specific Flannel release manifest; override if desired
+k8s_flannel_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/v0.25.5/Documentation/kube-flannel.yml"
+k8s_flannel_namespace: "kube-flannel"
+k8s_flannel_ds_name: "kube-flannel-ds"

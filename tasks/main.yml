@@ -1,4 +1,141 @@
 ---
 
 # Role - Main Tasks
-# This role implements ...
+
+- name: "Kubernetes | Debian/Ubuntu | Configure repo and install packages"
+  when:
+    - k8s_manage_repos
+    - ansible_os_family == 'Debian'
+  block:
+    - name: "Include pkg-management role for Debian/Ubuntu"
+      include_role:
+        name: iamenr0s.ansible_role_pkg_management
+      vars:
+        pkg_apt_keys:
+          - url: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/Release.key"
+            dest: "{{ k8s_apt_key_dest }}"
+        pkg_apt_repositories:
+          - repo: "deb [signed-by={{ k8s_apt_key_dest }}] https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/deb/ /"
+            filename: "{{ k8s_apt_repo_filename }}"
+            state: present
+            update_cache: true
+        pkg_install: "{{ k8s_packages }}"
+
+- name: "Kubernetes | RHEL/Fedora | Configure repo and install packages"
+  when:
+    - k8s_manage_repos
+    - ansible_os_family in ['RedHat']
+  block:
+    - name: "Include pkg-management role for RHEL/Fedora"
+      include_role:
+        name: iamenr0s.ansible_role_pkg_management
+      vars:
+        pkg_yum_repositories:
+          - name: "{{ k8s_yum_repo_name }}"
+            description: "Kubernetes"
+            baseurl: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/rpm/"
+            enabled: true
+            gpgcheck: true
+            gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/rpm/repodata/repomd.xml.key"
+            state: present
+        pkg_disable_excludes: "{{ k8s_disable_excludes }}"
+        pkg_install: "{{ k8s_packages }}"
+
+- name: "Kubernetes | Enable and start kubelet"
+  when:
+    - k8s_enable_kubelet
+  become: true
+  ansible.builtin.systemd:
+    name: kubelet
+    enabled: true
+    state: started
+
+- name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
+  when:
+    - inventory_hostname in groups[k8s_control_plane_group] | default([])
+  become: true
+  block:
+    - name: "Set pod CIDR for Flannel if requested"
+      when:
+        - k8s_install_flannel
+        - not k8s_use_pod_cidr
+      ansible.builtin.set_fact:
+        k8s_use_pod_cidr: true
+        k8s_pod_network_cidr: "{{ k8s_flannel_pod_cidr }}"
+
+    - name: "Check if cluster already initialized"
+      ansible.builtin.stat:
+        path: /etc/kubernetes/admin.conf
+      register: k8s_admin_conf
+
+    - name: "Run kubeadm init"
+      ansible.builtin.command: >-
+        kubeadm init
+        {% if k8s_use_pod_cidr %} --pod-network-cidr={{ k8s_pod_network_cidr }}{% endif %}
+        {{ k8s_init_extra_args | default('') }}
+      when: not k8s_admin_conf.stat.exists
+      register: kubeadm_init_result
+      changed_when: kubeadm_init_result.rc == 0
+
+    - name: "Setup kubeconfig for root"
+      when:
+        - k8s_kubeconfig_setup
+        - (k8s_admin_conf.stat.exists or (kubeadm_init_result is defined and kubeadm_init_result.rc == 0))
+      block:
+        - name: "Ensure .kube directory exists"
+          ansible.builtin.file:
+            path: /root/.kube
+            state: directory
+            mode: '0750'
+
+        - name: "Copy admin.conf to root kubeconfig"
+          ansible.builtin.copy:
+            src: /etc/kubernetes/admin.conf
+            dest: /root/.kube/config
+            owner: root
+            group: root
+            mode: '0640'
+            remote_src: true
+
+    - name: "Get kubeadm join command"
+      ansible.builtin.command: kubeadm token create --print-join-command
+      register: k8s_join_cmd_output
+      changed_when: false
+
+    - name: "Expose join command as host fact"
+      ansible.builtin.set_fact:
+        k8s_join_command: "{{ k8s_join_cmd_output.stdout }} {{ k8s_join_extra_args | default('') }}"
+
+    - name: "Check if Flannel is installed"
+      ansible.builtin.command: >-
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ k8s_flannel_namespace }} get ds {{ k8s_flannel_ds_name }}
+      register: k8s_flannel_get_ds
+      failed_when: false
+      changed_when: false
+
+    - name: "Install Flannel CNI"
+      when:
+        - k8s_install_flannel
+        - k8s_flannel_get_ds.rc != 0
+      ansible.builtin.command: >-
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ k8s_flannel_manifest_url }}
+      register: k8s_flannel_apply
+      changed_when: k8s_flannel_apply.rc == 0
+
+- name: "Kubernetes | Workers | Join cluster"
+  when:
+    - inventory_hostname in groups[k8s_workers_group] | default([])
+  become: true
+  block:
+    - name: "Check if node already joined"
+      ansible.builtin.stat:
+        path: /etc/kubernetes/kubelet.conf
+      register: k8s_kubelet_conf
+
+    - name: "Join node to cluster"
+      when:
+        - not k8s_kubelet_conf.stat.exists
+      ansible.builtin.command: >-
+        {{ hostvars[groups[k8s_control_plane_group][0]].k8s_join_command }}
+      register: kubeadm_join_result
+      changed_when: kubeadm_join_result.rc == 0

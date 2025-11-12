@@ -9,9 +9,7 @@ collections:
   - name: community.general
     version: ">=4.0.0"
 
-# Optional roles for enhanced security (uncomment if needed)
-# roles:
-#   - name: geerlingguy.security
-#     version: ">=2.0.0"
-#   - name: dev-sec.ssh-hardening
-#     version: ">=10.0.0"
+# Roles
+roles:
+  - name: iamenr0s.ansible_role_pkg_management
+    version: ">=1.0.0"

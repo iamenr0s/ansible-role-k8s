@@ -1,6 +1,6 @@
 ---
 galaxy_info:
-  role_name: ansible_role_template
+  role_name: ansible_role_k8s
   author: "iamenr0s"
   description: "A comprehensive Ansible role for ..."
   license: MIT
