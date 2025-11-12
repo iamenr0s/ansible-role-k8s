@@ -21,10 +21,33 @@
             update_cache: true
         pkg_install: "{{ k8s_packages }}"
 
+- name: "Kubernetes | Fedora | Configure repo and install packages"
+  when:
+    - k8s_manage_repos
+    - ansible_distribution == 'Fedora'
+  become: true
+  block:
+    - name: "Configure Kubernetes repo on Fedora"
+      ansible.builtin.yum_repository:
+        name: "{{ k8s_yum_repo_name }}"
+        description: "Kubernetes"
+        baseurl: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/rpm/"
+        enabled: true
+        gpgcheck: true
+        gpgkey: "https://pkgs.k8s.io/core:/stable:/{{ k8s_version_channel }}/rpm/repodata/repomd.xml.key"
+        state: present
+
+    - name: "Install Kubernetes packages on Fedora"
+      ansible.builtin.dnf:
+        name: "{{ k8s_packages }}"
+        state: present
+        disable_excludes: "{{ k8s_disable_excludes }}"
+
 - name: "Kubernetes | RHEL/Fedora | Configure repo and install packages"
   when:
     - k8s_manage_repos
     - ansible_os_family in ['RedHat']
+    - ansible_distribution != 'Fedora'
   block:
     - name: "Include pkg-management role for RHEL/Fedora"
       ansible.builtin.include_role:
