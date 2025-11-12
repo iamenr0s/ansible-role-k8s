@@ -6,7 +6,7 @@ Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RH
 ## Features
 
 - Configure pkgs.k8s.io repositories for Debian/Ubuntu and RHEL/Fedora.
-- Install `kubelet`, `kubeadm`, `kubectl` via external role `iamenr0s.ansible_role_pkg_management`.
+- Install `kubelet`, `kubeadm`, `kubectl`.
 - Enable and start `kubelet` service.
 - Initialize control plane with `kubeadm init` (idempotent check).
 - Generate and expose `kubeadm join` command to workers; join workers automatically.
@@ -26,13 +26,13 @@ Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RH
 - RHEL 8, 9, 10
 - Rocky Linux 8, 9, 10
 - AlmaLinux 8, 9, 10
-- Fedora 39+
+- Fedora 39, 40, 41, 42
 
 ## Role Variables
 
 ### Basic Configuration
 
-- `k8s_version_channel` (string, default: `v1.30`): Repository channel version.
+- `k8s_version_channel` (string, default: `v1.32`): Repository channel version.
 - `k8s_packages` (list, default: `[kubelet, kubeadm, kubectl]`): Packages to install.
 - `k8s_manage_repos` (bool, default: `true`): Manage repos inside this role.
 - `k8s_enable_kubelet` (bool, default: `true`): Enable and start kubelet.
@@ -50,7 +50,7 @@ Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RH
 
 ### Basic Usage
 
-Install Kubernetes using pkgs.k8s.io repositories (stable `v1.30`):
+Install Kubernetes using pkgs.k8s.io repositories (stable `v1.32`):
 
 Debian/Ubuntu:
 ```
@@ -61,7 +61,7 @@ Debian/Ubuntu:
   roles:
     - role: ansible-role-k8s
       vars:
-        k8s_version_channel: v1.30
+        k8s_version_channel: v1.32
         k8s_manage_repos: true
         k8s_packages:
           - kubelet
@@ -78,7 +78,7 @@ RHEL/Rocky/AlmaLinux/Fedora:
   roles:
     - role: ansible-role-k8s
       vars:
-        k8s_version_channel: v1.30
+        k8s_version_channel: v1.32
         k8s_manage_repos: true
         k8s_disable_excludes: all
         k8s_packages:
@@ -119,15 +119,13 @@ Playbook that installs, initializes the control plane, and joins workers:
   roles:
     - role: ansible-role-k8s
       vars:
-        k8s_version_channel: v1.30
+        k8s_version_channel: v1.32
         k8s_manage_repos: true
-        k8s_pod_network_cidr: 192.168.0.0/16
         k8s_control_plane_group: k8s_control_plane
         k8s_workers_group: k8s_workers
         # Flannel CNI
         k8s_install_flannel: true
         k8s_use_pod_cidr: true
-        k8s_flannel_pod_cidr: 10.244.0.0/16
         k8s_pod_network_cidr: 10.244.0.0/16
 ```
 
@@ -151,8 +149,8 @@ Notes:
 
 ### Common Issues
 
-- Repo not found: ensure `k8s_version_channel` matches an existing pkgs.k8s.io channel (e.g., `v1.30`).
-- Missing dependency role: run `ansible-galaxy install -r requirements.yml` before applying this role.
+- Repo not found or signature errors: ensure `k8s_version_channel` exists (e.g., `v1.32`) and that apt uses the `signed-by` keyring prepared by the role on Debian/Ubuntu.
+- Missing dependencies: run `ansible-galaxy install -r requirements.yml` before applying this role.
 
 ## License
 
@@ -175,12 +173,3 @@ Contributions are welcome! Please:
 ## Changelog
 
 See `CHANGELOG.md` for version history and release notes.
-### Flannel Setup Notes
-
-- Default Flannel CIDR: `10.244.0.0/16`. Ensure `k8s_use_pod_cidr: true` and set `k8s_pod_network_cidr` to match.
-- Variables:
-  - `k8s_install_flannel`: install Flannel after control-plane init.
-  - `k8s_flannel_pod_cidr`: pod CIDR for Flannel (defaults to `10.244.0.0/16`).
-  - `k8s_flannel_manifest_url`: manifest URL for Flannel deployment.
-  - `k8s_flannel_namespace`: namespace name to check for the DaemonSet.
-  - `k8s_flannel_ds_name`: DaemonSet name to check (defaults to `kube-flannel-ds`).

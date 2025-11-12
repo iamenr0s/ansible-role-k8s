@@ -111,7 +111,6 @@
         - not k8s_use_pod_cidr
       ansible.builtin.set_fact:
         k8s_use_pod_cidr: true
-        k8s_pod_network_cidr: "{{ k8s_flannel_pod_cidr }}"
 
     - name: "Check if cluster already initialized"
       ansible.builtin.stat:

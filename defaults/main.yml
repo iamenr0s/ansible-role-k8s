@@ -36,7 +36,6 @@ k8s_kubeconfig_setup: true               # copy admin.conf to root .kube/config
 
 # Flannel CNI installation
 k8s_install_flannel: true
-k8s_flannel_pod_cidr: "10.244.0.0/16"
 # Pin to a specific Flannel release manifest; override if desired
 k8s_flannel_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/v0.25.5/Documentation/kube-flannel.yml"
 k8s_flannel_namespace: "kube-flannel"
