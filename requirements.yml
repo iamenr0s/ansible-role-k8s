@@ -12,4 +12,3 @@ collections:
 # Roles
 roles:
   - name: iamenr0s.ansible_role_pkg_management
-    version: ">=1.0.0"
