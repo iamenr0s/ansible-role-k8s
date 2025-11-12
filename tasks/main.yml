@@ -8,6 +8,12 @@
     - ansible_os_family == 'Debian'
   become: true
   block:
+    - name: "Install gnupg for key dearmor"
+      ansible.builtin.apt:
+        name: gnupg
+        state: present
+        update_cache: true
+
     - name: "Ensure apt keyrings directory exists"
       ansible.builtin.file:
         path: /etc/apt/keyrings
