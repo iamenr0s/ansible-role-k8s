@@ -1,3 +1,5 @@
+[![Molecule](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml) [![Release](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/release.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/release.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/ansible_role_k8s) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s)
+
 # Ansible Role: Kubernetes
 Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RHEL/Fedora.
 
