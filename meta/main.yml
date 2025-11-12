@@ -2,7 +2,7 @@
 galaxy_info:
   role_name: ansible_role_k8s
   author: "iamenr0s"
-  description: "A comprehensive Ansible role for ..."
+  description: "Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RHEL/Fedora."
   license: MIT
   min_ansible_version: "2.9"
   platforms:
@@ -32,7 +32,24 @@ galaxy_info:
         - "focal"
         - "jammy"
         - "kinetic"
-  galaxy_tags: []
 
-dependencies: []
-collections: []
+  galaxy_tags:
+    - kubernetes
+    - kubeadm
+    - kubelet
+    - kubectl
+    - cni
+    - flannel
+    - cilium
+    - linux
+    - debian
+    - ubuntu
+    - rhel
+    - fedora
+
+dependencies:
+  - role: iamenr0s.ansible_role_pkg_management
+    version: ">=1.0.0"
+collections:
+  - ansible.posix
+  - community.general
