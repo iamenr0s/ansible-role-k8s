@@ -26,8 +26,8 @@ k8s_yum_repo_name: "kubernetes"
 k8s_disable_excludes: "all"
 
 # Cluster init/join settings
-k8s_control_plane_group: "k8s_control_plane"
-k8s_workers_group: "k8s_workers"
+k8s_control_plane_group: "masters"
+k8s_workers_group: "workers"
 k8s_use_pod_cidr: false                    # For Cilium, usually keep this false
 k8s_pod_network_cidr: "10.244.0.0/16"    # If true, ensure this matches your CNI
 k8s_init_extra_args: ""                 # additional kubeadm init args
