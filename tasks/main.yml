@@ -343,6 +343,8 @@
     - name: "Join node to cluster"
       when:
         - not k8s_kubelet_conf.stat.exists
+        - groups[k8s_control_plane_group] | default([]) | length > 0
+        - hostvars[groups[k8s_control_plane_group][0]].k8s_join_command is defined
       ansible.builtin.command: >-
         {{ hostvars[groups[k8s_control_plane_group][0]].k8s_join_command }}
       register: kubeadm_join_result
