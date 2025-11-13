@@ -46,7 +46,6 @@ galaxy_info:
 
 dependencies:
   - role: iamenr0s.ansible_role_pkg_management
-  - role: iamenr0s.ansible_role_firewalld
 collections:
   - ansible.posix
   - community.general
