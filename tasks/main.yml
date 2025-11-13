@@ -102,7 +102,6 @@
     state: started
 
 - name: "Kubernetes | System | Ensure memory cgroup enabled"
-  become: true
   block:
     - name: "Check cgroup v2 controllers"
       ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
@@ -145,13 +144,78 @@
         - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
         - not k8s_cgroup1_memory_dir.stat.exists
       block:
+        - name: "Ensure grubby is installed"
+          when: ansible_distribution == 'Fedora'
+          ansible.builtin.include_role:
+            name: iamenr0s.ansible_role_pkg_management
+          vars:
+            pkg_install:
+              - grubby
+
+        - name: "Check grubby path (sbin)"
+          when: ansible_distribution == 'Fedora'
+          ansible.builtin.stat:
+            path: /usr/sbin/grubby
+          register: k8s_grubby_sbin
+
+        - name: "Check grubby path (bin)"
+          when: ansible_distribution == 'Fedora'
+          ansible.builtin.stat:
+            path: /usr/bin/grubby
+          register: k8s_grubby_bin
+
         - name: "Update kernel args with grubby"
+          when: ansible_distribution == 'Fedora' and (k8s_grubby_sbin.stat.exists or k8s_grubby_bin.stat.exists)
           ansible.builtin.command: grubby --update-kernel=ALL --args="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"
           register: k8s_grubby_update
           changed_when: k8s_grubby_update.rc == 0
 
-        - name: "Reboot to apply cgroup settings"
-          when: k8s_grubby_update.changed
+        - name: "Ensure grub2 tools installed"
+          when: ansible_distribution != 'Fedora'
+          ansible.builtin.include_role:
+            name: iamenr0s.ansible_role_pkg_management
+          vars:
+            pkg_install:
+              - grub2-tools
+              - grub2-tools-extra
+
+        - name: "Detect UEFI"
+          ansible.builtin.stat:
+            path: /sys/firmware/efi
+          register: k8s_is_efi
+
+        - name: "Detect grub config (BIOS)"
+          ansible.builtin.stat:
+            path: /boot/grub2/grub.cfg
+          register: k8s_grub_cfg_bios
+
+        - name: "Detect grub config (UEFI vendor)"
+          ansible.builtin.stat:
+            path: "/boot/efi/EFI/{{ ansible_distribution | lower }}/grub.cfg"
+          register: k8s_grub_cfg_uefi_vendor
+
+        - name: "Update GRUB cmdline for cgroups (EL)"
+          when: ansible_distribution != 'Fedora'
+          ansible.builtin.lineinfile:
+            path: /etc/default/grub
+            regexp: '^GRUB_CMDLINE_LINUX='
+            line: 'GRUB_CMDLINE_LINUX="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"'
+          register: k8s_grub_line_update_el
+
+        - name: "Regenerate GRUB config (BIOS)"
+          when: k8s_grub_line_update_el.changed and k8s_grub_cfg_bios.stat.exists
+          ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
+          register: k8s_grub_mkconfig_bios
+          changed_when: k8s_grub_mkconfig_bios.rc == 0
+
+        - name: "Regenerate GRUB config (UEFI)"
+          when: k8s_grub_line_update_el.changed and k8s_is_efi.stat.exists
+          ansible.builtin.command: grub2-mkconfig -o /etc/grub2-efi.cfg
+          register: k8s_grub_mkconfig_uefi
+          changed_when: k8s_grub_mkconfig_uefi.rc == 0
+
+        - name: "Reboot to apply cgroup settings (EL)"
+          when: (k8s_grubby_update.changed) or (k8s_grub_mkconfig_bios is defined and k8s_grub_mkconfig_bios.changed) or (k8s_grub_mkconfig_uefi is defined and k8s_grub_mkconfig_uefi.changed)
           ansible.builtin.reboot:
             reboot_timeout: 600
 
