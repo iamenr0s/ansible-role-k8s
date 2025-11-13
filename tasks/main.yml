@@ -101,6 +101,60 @@
     enabled: true
     state: started
 
+- name: "Kubernetes | System | Ensure memory cgroup enabled"
+  become: true
+  block:
+    - name: "Check cgroup v2 controllers"
+      ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+      register: k8s_cgroup2_controllers
+      failed_when: false
+      changed_when: false
+
+    - name: "Check cgroup v1 memory mount"
+      ansible.builtin.stat:
+        path: /sys/fs/cgroup/memory
+      register: k8s_cgroup1_memory_dir
+
+    - name: "Enable memory cgroup on Debian/Ubuntu"
+      when:
+        - ansible_os_family == 'Debian'
+        - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
+        - not k8s_cgroup1_memory_dir.stat.exists
+      block:
+        - name: "Update GRUB cmdline for cgroups"
+          ansible.builtin.lineinfile:
+            path: /etc/default/grub
+            regexp: '^GRUB_CMDLINE_LINUX='
+            line: 'GRUB_CMDLINE_LINUX="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"'
+          register: k8s_grub_line_update
+
+        - name: "Update GRUB"
+          when: k8s_grub_line_update.changed
+          ansible.builtin.command: update-grub
+          register: k8s_update_grub
+          changed_when: k8s_update_grub.rc == 0
+
+        - name: "Reboot to apply cgroup settings"
+          when: k8s_grub_line_update.changed
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
+    - name: "Enable memory cgroup on RHEL/Fedora"
+      when:
+        - ansible_os_family in ['RedHat']
+        - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
+        - not k8s_cgroup1_memory_dir.stat.exists
+      block:
+        - name: "Update kernel args with grubby"
+          ansible.builtin.command: grubby --update-kernel=ALL --args="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"
+          register: k8s_grubby_update
+          changed_when: k8s_grubby_update.rc == 0
+
+        - name: "Reboot to apply cgroup settings"
+          when: k8s_grubby_update.changed
+          ansible.builtin.reboot:
+            reboot_timeout: 600
+
 - name: "Kubernetes | Control Plane | Configure firewalld and SELinux"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
