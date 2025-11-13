@@ -110,6 +110,7 @@
     firewalld_manage_kernel: false
     firewalld_manage_selinux: true
     firewalld_selinux_state: permissive
+    firewalld_selinux_policy: targeted
     firewalld_zones_present:
       - public
     firewalld_ports:
@@ -133,6 +134,7 @@
     firewalld_manage_kernel: false
     firewalld_manage_selinux: true
     firewalld_selinux_state: permissive
+    firewalld_selinux_policy: targeted
     firewalld_zones_present:
       - public
     firewalld_ports:
