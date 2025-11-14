@@ -355,10 +355,21 @@
             mode: '0640'
             remote_src: true
 
+    - name: "Wait for Kubernetes API server"
+      ansible.builtin.wait_for:
+        host: "{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+        port: 6443
+        state: started
+        delay: 5
+        timeout: 300
+
     - name: "Get kubeadm join command"
       ansible.builtin.command: kubeadm token create --print-join-command
       register: k8s_join_cmd_output
       changed_when: false
+      until: k8s_join_cmd_output.rc == 0
+      retries: 5
+      delay: 15
 
     - name: "Expose join command as host fact"
       ansible.builtin.set_fact:
