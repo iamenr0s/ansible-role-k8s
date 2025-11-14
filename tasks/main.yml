@@ -277,11 +277,56 @@
         path: /etc/kubernetes/admin.conf
       register: k8s_admin_conf
 
+    - name: "Disable swap if requested"
+      when:
+        - k8s_disable_swap
+      become: true
+      block:
+        - name: "Run swapoff"
+          ansible.builtin.command: swapoff -a
+          register: k8s_swapoff
+          failed_when: false
+          changed_when: k8s_swapoff.rc == 0
+
+        - name: "Remove swap entries from fstab"
+          ansible.builtin.replace:
+            path: /etc/fstab
+            regexp: '^(.*\s+swap\s+.*)$'
+            replace: '# \1'
+          register: k8s_fstab_swap
+
+    - name: "Verify memory cgroup availability"
+      become: true
+      block:
+        - name: "Read cgroup v2 controllers"
+          ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+          register: k8s_cg2_controllers_check
+          failed_when: false
+          changed_when: false
+
+        - name: "Check cgroup v1 memory mount"
+          ansible.builtin.stat:
+            path: /sys/fs/cgroup/memory
+          register: k8s_cg1_memory_check
+
+        - name: "Set memory cgroup status fact"
+          ansible.builtin.set_fact:
+            k8s_memcg_ok: >-
+              {{ (k8s_cg2_controllers_check.stdout is defined and ('memory' in k8s_cg2_controllers_check.stdout))
+                 or (k8s_cg1_memory_check.stat.exists) }}
+
+        - name: "Fail if memory cgroup missing and not ignoring preflight"
+          when:
+            - not k8s_memcg_ok
+            - (k8s_ignore_preflight_errors | default('')) | length == 0
+          ansible.builtin.fail:
+            msg: "Memory cgroup is not enabled. Kernel args were updated earlier; ensure host rebooted and cgroup memory is active, or set k8s_ignore_preflight_errors to bypass."
+
     - name: "Run kubeadm init"
       ansible.builtin.command: >-
         kubeadm init
         {% if k8s_use_pod_cidr %} --pod-network-cidr={{ k8s_pod_network_cidr }}{% endif %}
-        {{ k8s_init_extra_args | default('') }}
+        {{ k8s_init_extra_args | default('') }}{% if k8s_ignore_preflight_errors | default('') %} --ignore-preflight-errors={{ k8s_ignore_preflight_errors }}{% endif %}
       when: not k8s_admin_conf.stat.exists
       register: kubeadm_init_result
       changed_when: kubeadm_init_result.rc == 0

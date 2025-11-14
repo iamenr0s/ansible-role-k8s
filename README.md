@@ -41,6 +41,8 @@ Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RH
 - `k8s_apt_repo_filename` (string): Apt sources filename.
 - `k8s_yum_repo_name` (string): YUM/DNF repo name.
 - `k8s_disable_excludes` (string, default: `all`): Pass-through to disable repo excludes for DNF/YUM operations.
+- `k8s_disable_swap` (bool, default: `true`): Disable swap and update fstab before init.
+- `k8s_ignore_preflight_errors` (string, default: empty): Add to kubeadm init via `--ignore-preflight-errors`.
 
 ## Dependencies
 

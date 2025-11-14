@@ -40,3 +40,7 @@ k8s_install_flannel: true
 k8s_flannel_manifest_url: "https://raw.githubusercontent.com/flannel-io/flannel/v0.25.5/Documentation/kube-flannel.yml"
 k8s_flannel_namespace: "kube-flannel"
 k8s_flannel_ds_name: "kube-flannel-ds"
+
+# System settings
+k8s_disable_swap: true
+k8s_ignore_preflight_errors: ""
