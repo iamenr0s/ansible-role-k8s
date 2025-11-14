@@ -314,15 +314,22 @@
               {{ (k8s_cg2_controllers_check.stdout is defined and ('memory' in k8s_cg2_controllers_check.stdout))
                  or (k8s_cg1_memory_check.stat.exists) }}
 
-        - name: "Fail if memory cgroup missing and not ignoring preflight"
+        - name: "Handle missing memory cgroup"
           when:
             - not k8s_memcg_ok
           block:
-            - name: "Warn: memory cgroup missing; proceeding with kubeadm preflight bypass"
+            - name: "Fail: memory cgroup not detected"
+              when: not (k8s_allow_memcg_bypass | default(false))
+              ansible.builtin.fail:
+                msg: "Memory cgroup not detected. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before initializing Kubernetes. Set k8s_allow_memcg_bypass=true to bypass kubeadm preflight (not recommended)."
+
+            - name: "Warn and bypass kubeadm preflight for SystemVerification"
+              when: k8s_allow_memcg_bypass | default(false)
               ansible.builtin.debug:
-                msg: "Memory cgroup not detected. Automatically setting --ignore-preflight-errors=SystemVerification so kubeadm can proceed. Ensure kernel args are applied and host rebooted."
+                msg: "Memory cgroup not detected. Proceeding by setting --ignore-preflight-errors=SystemVerification as requested."
 
             - name: "Auto-set preflight ignore for SystemVerification"
+              when: k8s_allow_memcg_bypass | default(false)
               ansible.builtin.set_fact:
                 k8s_ignore_preflight_errors: "{{ (k8s_ignore_preflight_errors | default('')) if ((k8s_ignore_preflight_errors | default('')) | length > 0) else 'SystemVerification' }}"
 
@@ -395,6 +402,39 @@
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
   block:
+    - name: "Verify memory cgroup availability (workers)"
+      block:
+        - name: "Read cgroup v2 controllers (workers)"
+          ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
+          register: k8s_cg2_controllers_check_worker
+          failed_when: false
+          changed_when: false
+
+        - name: "Check cgroup v1 memory mount (workers)"
+          ansible.builtin.stat:
+            path: /sys/fs/cgroup/memory
+          register: k8s_cg1_memory_check_worker
+
+        - name: "Set memory cgroup status fact (workers)"
+          ansible.builtin.set_fact:
+            k8s_memcg_ok_worker: >-
+              {{ (k8s_cg2_controllers_check_worker.stdout is defined and ('memory' in k8s_cg2_controllers_check_worker.stdout))
+                 or (k8s_cg1_memory_check_worker.stat.exists) }}
+
+        - name: "Handle missing memory cgroup (workers)"
+          when:
+            - not k8s_memcg_ok_worker
+          block:
+            - name: "Fail: memory cgroup not detected (workers)"
+              when: not (k8s_allow_memcg_bypass | default(false))
+              ansible.builtin.fail:
+                msg: "Memory cgroup not detected on worker. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before joining Kubernetes. Set k8s_allow_memcg_bypass=true to bypass (not recommended)."
+
+            - name: "Warn and bypass kubeadm preflight for SystemVerification (workers)"
+              when: k8s_allow_memcg_bypass | default(false)
+              ansible.builtin.debug:
+                msg: "Memory cgroup not detected on worker. Proceeding by setting --ignore-preflight-errors=SystemVerification as requested."
+
     - name: "Check if node already joined"
       ansible.builtin.stat:
         path: /etc/kubernetes/kubelet.conf
