@@ -101,6 +101,7 @@
     state: started
 
 - name: "Kubernetes | System | Ensure memory cgroup enabled"
+  become: true
   block:
     - name: "Check cgroup v2 controllers"
       ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
@@ -318,6 +319,29 @@
           when:
             - not k8s_memcg_ok
           block:
+            - name: "Collect cgroup diagnostics"
+              block:
+                - name: "Read /proc/cgroups"
+                  ansible.builtin.command: cat /proc/cgroups
+                  register: k8s_proc_cgroups
+                  failed_when: false
+                  changed_when: false
+
+                - name: "Read mounts"
+                  ansible.builtin.command: mount
+                  register: k8s_mounts
+                  failed_when: false
+                  changed_when: false
+
+                - name: "Diagnostics: cgroup details"
+                  ansible.builtin.debug:
+                    msg: {
+                      "cgroup_v2_controllers": "{{ k8s_cg2_controllers_check.stdout | default('') }}",
+                      "cgroup_v1_memory_dir_exists": "{{ k8s_cg1_memory_check.stat.exists | default(false) }}",
+                      "proc_cgroups": "{{ k8s_proc_cgroups.stdout | default('') }}",
+                      "mounts": "{{ (k8s_mounts.stdout | default('')) | regex_findall('.*cgroup.*') }}"
+                    }
+
             - name: "Fail: memory cgroup not detected"
               when: not (k8s_allow_memcg_bypass | default(false))
               ansible.builtin.fail:
@@ -425,6 +449,29 @@
           when:
             - not k8s_memcg_ok_worker
           block:
+            - name: "Collect cgroup diagnostics (workers)"
+              block:
+                - name: "Read /proc/cgroups (workers)"
+                  ansible.builtin.command: cat /proc/cgroups
+                  register: k8s_proc_cgroups_worker
+                  failed_when: false
+                  changed_when: false
+
+                - name: "Read mounts (workers)"
+                  ansible.builtin.command: mount
+                  register: k8s_mounts_worker
+                  failed_when: false
+                  changed_when: false
+
+                - name: "Diagnostics: cgroup details (workers)"
+                  ansible.builtin.debug:
+                    msg: {
+                      "cgroup_v2_controllers": "{{ k8s_cg2_controllers_check_worker.stdout | default('') }}",
+                      "cgroup_v1_memory_dir_exists": "{{ k8s_cg1_memory_check_worker.stat.exists | default(false) }}",
+                      "proc_cgroups": "{{ k8s_proc_cgroups_worker.stdout | default('') }}",
+                      "mounts": "{{ (k8s_mounts_worker.stdout | default('')) | regex_findall('.*cgroup.*') }}"
+                    }
+
             - name: "Fail: memory cgroup not detected (workers)"
               when: not (k8s_allow_memcg_bypass | default(false))
               ansible.builtin.fail:
