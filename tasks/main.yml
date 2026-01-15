@@ -92,6 +92,50 @@
         pkg_disable_excludes: "{{ k8s_disable_excludes }}"
         pkg_install: "{{ k8s_packages }}"
 
+- name: "Kubernetes | System | Ensure swap disabled"
+  when:
+    - k8s_disable_swap
+  become: true
+  block:
+    - name: "Check active swap"
+      ansible.builtin.command: swapon --summary
+      register: k8s_swapon_summary
+      failed_when: false
+      changed_when: false
+
+    - name: "Disable swap using role"
+      when: (k8s_swapon_summary.stdout | default('')) | length > 0
+      ansible.builtin.include_role:
+        name: iamenr0s.ansible_role_swap
+
+    - name: "Verify swap is disabled"
+      ansible.builtin.command: swapon --summary
+      register: k8s_swapon_verify
+      changed_when: false
+      failed_when: false
+
+    - name: "Fallback: disable swap directly"
+      when: (k8s_swapon_verify.stdout | default('')) | length > 0
+      block:
+        - name: "Run swapoff -a"
+          ansible.builtin.command: swapoff -a
+          register: k8s_swapoff_direct
+          failed_when: false
+          changed_when: k8s_swapoff_direct.rc == 0
+
+        - name: "Comment swap entries in /etc/fstab"
+          ansible.builtin.replace:
+            path: /etc/fstab
+            regexp: '^(.*\s+swap\s+.*)$'
+            replace: '# \1'
+          register: k8s_fstab_swap_fix
+
+        - name: "Verify swap is disabled (final)"
+          ansible.builtin.command: swapon --summary
+          register: k8s_swapon_verify_final
+          changed_when: false
+          failed_when: (k8s_swapon_verify_final.stdout | default('')) | length > 0
+
 - name: "Kubernetes | Enable and start kubelet"
   when:
     - k8s_enable_kubelet
@@ -100,124 +144,6 @@
     enabled: true
     state: started
 
-- name: "Kubernetes | System | Ensure memory cgroup enabled"
-  become: true
-  block:
-    - name: "Check cgroup v2 controllers"
-      ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
-      register: k8s_cgroup2_controllers
-      failed_when: false
-      changed_when: false
-
-    - name: "Check cgroup v1 memory mount"
-      ansible.builtin.stat:
-        path: /sys/fs/cgroup/memory
-      register: k8s_cgroup1_memory_dir
-
-    - name: "Enable memory cgroup on Debian/Ubuntu"
-      when:
-        - ansible_os_family == 'Debian'
-        - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
-        - not k8s_cgroup1_memory_dir.stat.exists
-      block:
-        - name: "Update GRUB cmdline for cgroups"
-          ansible.builtin.lineinfile:
-            path: /etc/default/grub
-            regexp: '^GRUB_CMDLINE_LINUX='
-            line: 'GRUB_CMDLINE_LINUX="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"'
-          register: k8s_grub_line_update
-
-        - name: "Update GRUB"
-          when: k8s_grub_line_update.changed
-          ansible.builtin.command: update-grub
-          register: k8s_update_grub
-          changed_when: k8s_update_grub.rc == 0
-
-        - name: "Reboot to apply cgroup settings"
-          when: k8s_grub_line_update.changed
-          ansible.builtin.reboot:
-            reboot_timeout: 600
-
-    - name: "Enable memory cgroup on RHEL/Fedora"
-      when:
-        - ansible_os_family in ['RedHat']
-        - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
-        - not k8s_cgroup1_memory_dir.stat.exists
-      block:
-        - name: "Ensure grubby is installed"
-          when: ansible_distribution == 'Fedora'
-          ansible.builtin.include_role:
-            name: iamenr0s.ansible_role_pkg_management
-          vars:
-            pkg_install:
-              - grubby
-
-        - name: "Check grubby path (sbin)"
-          when: ansible_distribution == 'Fedora'
-          ansible.builtin.stat:
-            path: /usr/sbin/grubby
-          register: k8s_grubby_sbin
-
-        - name: "Check grubby path (bin)"
-          when: ansible_distribution == 'Fedora'
-          ansible.builtin.stat:
-            path: /usr/bin/grubby
-          register: k8s_grubby_bin
-
-        - name: "Update kernel args with grubby"
-          when: ansible_distribution == 'Fedora' and (k8s_grubby_sbin.stat.exists or k8s_grubby_bin.stat.exists)
-          ansible.builtin.command: grubby --update-kernel=ALL --args="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"
-          register: k8s_grubby_update
-          changed_when: k8s_grubby_update.rc == 0
-
-        - name: "Ensure grub2 tools installed"
-          when: ansible_distribution != 'Fedora'
-          ansible.builtin.include_role:
-            name: iamenr0s.ansible_role_pkg_management
-          vars:
-            pkg_install:
-              - grub2-tools
-              - grub2-tools-extra
-
-        - name: "Detect UEFI"
-          ansible.builtin.stat:
-            path: /sys/firmware/efi
-          register: k8s_is_efi
-
-        - name: "Detect grub config (BIOS)"
-          ansible.builtin.stat:
-            path: /boot/grub2/grub.cfg
-          register: k8s_grub_cfg_bios
-
-        - name: "Detect grub config (UEFI vendor)"
-          ansible.builtin.stat:
-            path: "/boot/efi/EFI/{{ ansible_distribution | lower }}/grub.cfg"
-          register: k8s_grub_cfg_uefi_vendor
-
-        - name: "Update GRUB cmdline for cgroups (EL)"
-          when: ansible_distribution != 'Fedora'
-          ansible.builtin.lineinfile:
-            path: /etc/default/grub
-            regexp: '^GRUB_CMDLINE_LINUX='
-            line: 'GRUB_CMDLINE_LINUX="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"'
-          register: k8s_grub_line_update_el
-
-        - name: "Regenerate GRUB config (BIOS)"
-          when: k8s_grub_line_update_el.changed and k8s_grub_cfg_bios.stat.exists
-          ansible.builtin.command: grub2-mkconfig -o /boot/grub2/grub.cfg
-          register: k8s_grub_mkconfig_bios
-          changed_when: k8s_grub_mkconfig_bios.rc == 0
-
-        - name: "Regenerate GRUB config (UEFI)"
-          when: k8s_grub_line_update_el.changed and k8s_is_efi.stat.exists
-          ansible.builtin.command: grub2-mkconfig -o /etc/grub2-efi.cfg
-          register: k8s_grub_mkconfig_uefi
-          changed_when: k8s_grub_mkconfig_uefi.rc == 0
-
-        - name: "Reboot to apply cgroup settings (EL)"
-          when: (k8s_grubby_update.changed) or (k8s_grub_mkconfig_bios is defined and k8s_grub_mkconfig_bios.changed) or (k8s_grub_mkconfig_uefi is defined and k8s_grub_mkconfig_uefi.changed)
-          ansible.builtin.reboot:
-            reboot_timeout: 600
 
 - name: "Kubernetes | Control Plane | Configure firewalld and SELinux"
   when:
@@ -264,104 +190,17 @@
 - name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
+  become: true
   block:
-    - name: "Set pod CIDR for Flannel if requested"
-      when:
-        - k8s_install_flannel
-        - not k8s_use_pod_cidr
-      ansible.builtin.set_fact:
-        k8s_use_pod_cidr: true
-
     - name: "Check if cluster already initialized"
       ansible.builtin.stat:
         path: /etc/kubernetes/admin.conf
       register: k8s_admin_conf
 
-    - name: "Disable swap if requested"
-      when:
-        - k8s_disable_swap
-      become: true
-      block:
-        - name: "Run swapoff"
-          ansible.builtin.command: swapoff -a
-          register: k8s_swapoff
-          failed_when: false
-          changed_when: k8s_swapoff.rc == 0
-
-        - name: "Remove swap entries from fstab"
-          ansible.builtin.replace:
-            path: /etc/fstab
-            regexp: '^(.*\s+swap\s+.*)$'
-            replace: '# \1'
-          register: k8s_fstab_swap
-
-    - name: "Verify memory cgroup availability"
-      become: true
-      block:
-        - name: "Read cgroup v2 controllers"
-          ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
-          register: k8s_cg2_controllers_check
-          failed_when: false
-          changed_when: false
-
-        - name: "Check cgroup v1 memory mount"
-          ansible.builtin.stat:
-            path: /sys/fs/cgroup/memory
-          register: k8s_cg1_memory_check
-
-        - name: "Set memory cgroup status fact"
-          ansible.builtin.set_fact:
-            k8s_memcg_ok: >-
-              {{ (k8s_cg2_controllers_check.stdout is defined and ('memory' in k8s_cg2_controllers_check.stdout))
-                 or (k8s_cg1_memory_check.stat.exists) }}
-
-        - name: "Handle missing memory cgroup"
-          when:
-            - not k8s_memcg_ok
-          block:
-            - name: "Collect cgroup diagnostics"
-              block:
-                - name: "Read /proc/cgroups"
-                  ansible.builtin.command: cat /proc/cgroups
-                  register: k8s_proc_cgroups
-                  failed_when: false
-                  changed_when: false
-
-                - name: "Read mounts"
-                  ansible.builtin.command: mount
-                  register: k8s_mounts
-                  failed_when: false
-                  changed_when: false
-
-                - name: "Diagnostics: cgroup details"
-                  ansible.builtin.debug:
-                    msg: {
-                      "cgroup_v2_controllers": "{{ k8s_cg2_controllers_check.stdout | default('') }}",
-                      "cgroup_v1_memory_dir_exists": "{{ k8s_cg1_memory_check.stat.exists | default(false) }}",
-                      "proc_cgroups": "{{ k8s_proc_cgroups.stdout | default('') }}",
-                      "mounts": "{{ (k8s_mounts.stdout | default('')) | regex_findall('.*cgroup.*') }}"
-                    }
-
-            - name: "Fail: memory cgroup not detected"
-              when: not (k8s_allow_memcg_bypass | default(false))
-              ansible.builtin.fail:
-                msg: "Memory cgroup not detected. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before initializing Kubernetes. Set k8s_allow_memcg_bypass=true to bypass kubeadm preflight (not recommended)."
-
-            - name: "Warn and bypass kubeadm preflight for SystemVerification"
-              when: k8s_allow_memcg_bypass | default(false)
-              ansible.builtin.debug:
-                msg: "Memory cgroup not detected. Proceeding by setting --ignore-preflight-errors=SystemVerification as requested."
-
-            - name: "Auto-set preflight ignore for SystemVerification"
-              when: k8s_allow_memcg_bypass | default(false)
-              ansible.builtin.set_fact:
-                k8s_ignore_preflight_errors: "{{ (k8s_ignore_preflight_errors | default('')) if ((k8s_ignore_preflight_errors | default('')) | length > 0) else 'SystemVerification' }}"
-
-    - name: "Run kubeadm init"
+    - name: "Run kubeadm init (simple)"
       ansible.builtin.command: >-
-        kubeadm init
-        {% if k8s_use_pod_cidr %} --pod-network-cidr={{ k8s_pod_network_cidr }}{% endif %}
-        {{ k8s_init_extra_args | default('') }}{% if k8s_ignore_preflight_errors | default('') %} --ignore-preflight-errors={{ k8s_ignore_preflight_errors }}{% endif %}
+        kubeadm init{% if k8s_control_plane_endpoint is defined and (k8s_control_plane_endpoint | length) > 0 %} --control-plane-endpoint={{ k8s_control_plane_endpoint }}{% endif %}
+        {{ k8s_init_extra_args | default('') }}
       when: not k8s_admin_conf.stat.exists
       register: kubeadm_init_result
       changed_when: kubeadm_init_result.rc == 0
@@ -398,89 +237,55 @@
       ansible.builtin.command: kubeadm token create --print-join-command
       register: k8s_join_cmd_output
       changed_when: false
-      until: k8s_join_cmd_output.rc == 0
-      retries: 5
-      delay: 15
 
     - name: "Expose join command as host fact"
       ansible.builtin.set_fact:
         k8s_join_command: "{{ k8s_join_cmd_output.stdout }} {{ k8s_join_extra_args | default('') }}"
 
-    - name: "Check if Flannel is installed"
-      ansible.builtin.command: >-
-        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ k8s_flannel_namespace }} get ds {{ k8s_flannel_ds_name }}
-      register: k8s_flannel_get_ds
-      failed_when: false
-      changed_when: false
+    - name: "Read admin.conf content"
+      ansible.builtin.slurp:
+        src: /etc/kubernetes/admin.conf
+      register: k8s_admin_conf_slurp
 
-    - name: "Install Flannel CNI"
-      when:
-        - k8s_install_flannel
-        - k8s_flannel_get_ds.rc != 0
-      ansible.builtin.command: >-
-        kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ k8s_flannel_manifest_url }}
-      register: k8s_flannel_apply
-      changed_when: k8s_flannel_apply.rc == 0
+    - name: "Expose admin.conf as host fact"
+      ansible.builtin.set_fact:
+        k8s_admin_conf_content: "{{ k8s_admin_conf_slurp.content }}"
 
 - name: "Kubernetes | Workers | Join cluster"
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
   block:
-    - name: "Verify memory cgroup availability (workers)"
+    - name: "Copy kubeconfig from control plane"
+      when:
+        - groups[k8s_control_plane_group] | default([]) | length > 0
+        - hostvars[groups[k8s_control_plane_group][0]].k8s_admin_conf_content is defined
+      become: true
       block:
-        - name: "Read cgroup v2 controllers (workers)"
-          ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
-          register: k8s_cg2_controllers_check_worker
-          failed_when: false
-          changed_when: false
+        - name: "Ensure .kube directory exists on worker"
+          ansible.builtin.file:
+            path: /root/.kube
+            state: directory
+            mode: '0750'
 
-        - name: "Check cgroup v1 memory mount (workers)"
-          ansible.builtin.stat:
-            path: /sys/fs/cgroup/memory
-          register: k8s_cg1_memory_check_worker
+        - name: "Write kubeconfig from control plane"
+          ansible.builtin.copy:
+            content: "{{ hostvars[groups[k8s_control_plane_group][0]].k8s_admin_conf_content | b64decode }}"
+            dest: /root/.kube/config
+            owner: root
+            group: root
+            mode: '0640'
 
-        - name: "Set memory cgroup status fact (workers)"
-          ansible.builtin.set_fact:
-            k8s_memcg_ok_worker: >-
-              {{ (k8s_cg2_controllers_check_worker.stdout is defined and ('memory' in k8s_cg2_controllers_check_worker.stdout))
-                 or (k8s_cg1_memory_check_worker.stat.exists) }}
-
-        - name: "Handle missing memory cgroup (workers)"
-          when:
-            - not k8s_memcg_ok_worker
-          block:
-            - name: "Collect cgroup diagnostics (workers)"
-              block:
-                - name: "Read /proc/cgroups (workers)"
-                  ansible.builtin.command: cat /proc/cgroups
-                  register: k8s_proc_cgroups_worker
-                  failed_when: false
-                  changed_when: false
-
-                - name: "Read mounts (workers)"
-                  ansible.builtin.command: mount
-                  register: k8s_mounts_worker
-                  failed_when: false
-                  changed_when: false
-
-                - name: "Diagnostics: cgroup details (workers)"
-                  ansible.builtin.debug:
-                    msg: {
-                      "cgroup_v2_controllers": "{{ k8s_cg2_controllers_check_worker.stdout | default('') }}",
-                      "cgroup_v1_memory_dir_exists": "{{ k8s_cg1_memory_check_worker.stat.exists | default(false) }}",
-                      "proc_cgroups": "{{ k8s_proc_cgroups_worker.stdout | default('') }}",
-                      "mounts": "{{ (k8s_mounts_worker.stdout | default('')) | regex_findall('.*cgroup.*') }}"
-                    }
-
-            - name: "Fail: memory cgroup not detected (workers)"
-              when: not (k8s_allow_memcg_bypass | default(false))
-              ansible.builtin.fail:
-                msg: "Memory cgroup not detected on worker. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before joining Kubernetes. Set k8s_allow_memcg_bypass=true to bypass (not recommended)."
-
-            - name: "Warn and bypass kubeadm preflight for SystemVerification (workers)"
-              when: k8s_allow_memcg_bypass | default(false)
-              ansible.builtin.debug:
-                msg: "Memory cgroup not detected on worker. Proceeding by setting --ignore-preflight-errors=SystemVerification as requested."
+    - name: "Create kubeadm join script on worker"
+      when:
+        - groups[k8s_control_plane_group] | default([]) | length > 0
+        - hostvars[groups[k8s_control_plane_group][0]].k8s_join_command is defined
+      become: true
+      ansible.builtin.copy:
+        content: "{{ hostvars[groups[k8s_control_plane_group][0]].k8s_join_command }}\n"
+        dest: /usr/local/bin/kubeadm_join.sh
+        owner: root
+        group: root
+        mode: '0755'
 
     - name: "Check if node already joined"
       ansible.builtin.stat:
@@ -492,6 +297,7 @@
         - not k8s_kubelet_conf.stat.exists
         - groups[k8s_control_plane_group] | default([]) | length > 0
         - hostvars[groups[k8s_control_plane_group][0]].k8s_join_command is defined
+      become: true
       ansible.builtin.command: >-
         {{ hostvars[groups[k8s_control_plane_group][0]].k8s_join_command }}
       register: kubeadm_join_result
