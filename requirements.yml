@@ -1,6 +1,6 @@
 ---
 
-# Ansible Requirements for Kubernetes Role
+# Ansible Requirements for SSH Hardening Role
 # Install with: ansible-galaxy install -r requirements.yml
 # Collections
 collections:
@@ -13,5 +13,3 @@ collections:
 roles:
   - name: iamenr0s.ansible_role_pkg_management
   - name: iamenr0s.ansible_role_firewalld
-  - name: iamenr0s.ansible_role_swap
-  - name: iamenr0s.ansible_role_kernel_configuration
