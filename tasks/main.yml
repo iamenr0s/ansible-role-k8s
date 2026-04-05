@@ -136,9 +136,9 @@
           changed_when: false
           failed_when: (k8s_swapon_verify_final.stdout | default('')) | length > 0
 
-- name: "Kubernetes | System | Enable br_netfilter and bridge-nf iptables"
+- name: "Kubernetes | System | Load br_netfilter kernel module"
   when:
-    - k8s_install_flannel
+    - k8s_configure_kernel_networking
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_kernel_configuration
     apply:
@@ -148,9 +148,9 @@
       - br_netfilter
     kernel_modules_persistent: true
 
-- name: "Kubernetes | System | Enable br_netfilter and bridge-nf iptables"
+- name: "Kubernetes | System | Set bridge-nf sysctl parameters"
   when:
-    - k8s_install_flannel
+    - k8s_configure_kernel_networking
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_kernel_configuration
     apply:
@@ -216,12 +216,6 @@
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
   become: true
   block:
-    - name: "Set pod CIDR for Flannel if requested"
-      when:
-        - k8s_install_flannel
-        - not k8s_use_pod_cidr
-      ansible.builtin.set_fact:
-        k8s_use_pod_cidr: true
     - name: "Check if cluster already initialized"
       ansible.builtin.stat:
         path: /etc/kubernetes/admin.conf
@@ -229,24 +223,14 @@
 
     - name: "Create kubeadm config file"
       when: not k8s_admin_conf.stat.exists
-      ansible.builtin.copy:
-        dest: /tmp/kubeadm-init.yaml
-        mode: '0644'
-        content: |
-          apiVersion: kubeadm.k8s.io/v1beta4
-          kind: ClusterConfiguration
-          {% if k8s_control_plane_endpoint is defined and (k8s_control_plane_endpoint | length) > 0 %}controlPlaneEndpoint: "{{ k8s_control_plane_endpoint }}"
-          {% endif %}networking:
-            {% if k8s_use_pod_cidr %}podSubnet: "{{ k8s_pod_network_cidr }}"
-            {% endif %}controllerManager:
-            extraArgs:
-              allocate-node-cidrs: "true"
-              {% if k8s_use_pod_cidr %}cluster-cidr: "{{ k8s_pod_network_cidr }}"
-              {% endif %}
+      ansible.builtin.template:
+        src: kubeadm-init.yaml.j2
+        dest: /root/kubeadm-init.yaml
+        mode: '0600'
 
     - name: "Run kubeadm init (simple)"
       ansible.builtin.command: >-
-        kubeadm init --config=/tmp/kubeadm-init.yaml
+        kubeadm init --config=/root/kubeadm-init.yaml
         {{ k8s_init_extra_args | default('') }}
       when: not k8s_admin_conf.stat.exists
       register: kubeadm_init_result
@@ -300,6 +284,7 @@
 
 
     - name: "Check if Flannel is installed"
+      when: k8s_install_flannel
       ansible.builtin.command: >-
         kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ k8s_flannel_namespace }} get ds {{ k8s_flannel_ds_name }}
       register: k8s_flannel_get_ds
@@ -313,10 +298,10 @@
       ansible.builtin.command: >-
         kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ k8s_flannel_manifest_url }}
       register: k8s_flannel_apply
-      changed_when: k8s_flannel_apply.rc == 0
+      changed_when: "'configured' in k8s_flannel_apply.stdout or 'created' in k8s_flannel_apply.stdout"
 
     - name: "Wait for Flannel rollout"
-      when: k8s_install_flannel
+      when: k8s_install_flannel and k8s_flannel_get_ds.rc != 0
       ansible.builtin.command: >-
         kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ k8s_flannel_namespace }} rollout status ds/{{ k8s_flannel_ds_name }} --timeout=300s
       register: k8s_flannel_rollout
