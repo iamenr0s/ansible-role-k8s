@@ -28,11 +28,16 @@ k8s_disable_excludes: "all"
 # Cluster init/join settings
 k8s_control_plane_group: "masters"
 k8s_workers_group: "workers"
-k8s_use_pod_cidr: false                    # For Cilium, usually keep this false
-k8s_pod_network_cidr: "10.244.0.0/16"    # If true, ensure this matches your CNI
-k8s_init_extra_args: ""                 # additional kubeadm init args
-k8s_join_extra_args: ""                 # additional kubeadm join args
+k8s_control_plane_endpoint: ""           # e.g. "lb.example.com:6443" for HA
+k8s_use_pod_cidr: false                  # For Cilium, usually keep this false
+k8s_pod_network_cidr: "10.244.0.0/16"   # If true, ensure this matches your CNI
+k8s_init_extra_args: ""                  # additional kubeadm init args
+k8s_join_extra_args: ""                  # additional kubeadm join args
 k8s_kubeconfig_setup: true               # copy admin.conf to root .kube/config
+
+# Kernel networking prerequisites (br_netfilter, overlay, sysctl)
+# Set to true when not managed by a separate role or host setup
+k8s_configure_kernel_networking: false
 
 # Flannel CNI installation
 k8s_install_flannel: true

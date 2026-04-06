@@ -260,17 +260,26 @@
       - { port: "30000-32767/tcp", zone: "public" }
       - { port: "4789/udp", zone: "public" }
 
+- name: "Kubernetes | System | Configure kernel networking prerequisites"
+  when: k8s_configure_kernel_networking
+  ansible.builtin.include_role:
+    name: iamenr0s.ansible_role_kernel_configuration
+  vars:
+    kernel_modules:
+      - br_netfilter
+      - overlay
+    kernel_parameters:
+      - name: net.bridge.bridge-nf-call-iptables
+        value: "1"
+      - name: net.bridge.bridge-nf-call-ip6tables
+        value: "1"
+      - name: net.ipv4.ip_forward
+        value: "1"
+
 - name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
   block:
-    - name: "Set pod CIDR for Flannel if requested"
-      when:
-        - k8s_install_flannel
-        - not k8s_use_pod_cidr
-      ansible.builtin.set_fact:
-        k8s_use_pod_cidr: true
-
     - name: "Check if cluster already initialized"
       ansible.builtin.stat:
         path: /etc/kubernetes/admin.conf
@@ -333,12 +342,18 @@
               ansible.builtin.set_fact:
                 k8s_ignore_preflight_errors: "{{ (k8s_ignore_preflight_errors | default('')) if ((k8s_ignore_preflight_errors | default('')) | length > 0) else 'SystemVerification' }}"
 
-    - name: "Run kubeadm init"
-      ansible.builtin.command: >-
-        kubeadm init
-        {% if k8s_use_pod_cidr %} --pod-network-cidr={{ k8s_pod_network_cidr }}{% endif %}
-        {{ k8s_init_extra_args | default('') }}{% if k8s_ignore_preflight_errors | default('') %} --ignore-preflight-errors={{ k8s_ignore_preflight_errors }}{% endif %}
+    - name: "Generate kubeadm init config"
       when: not k8s_admin_conf.stat.exists
+      ansible.builtin.template:
+        src: kubeadm-init.yaml.j2
+        dest: /tmp/kubeadm-init.yaml
+        mode: "0600"
+
+    - name: "Run kubeadm init"
+      when: not k8s_admin_conf.stat.exists
+      ansible.builtin.command: >-
+        kubeadm init --config /tmp/kubeadm-init.yaml
+        {{ k8s_init_extra_args | default('') }}{% if k8s_ignore_preflight_errors | default('') %} --ignore-preflight-errors={{ k8s_ignore_preflight_errors }}{% endif %}
       register: kubeadm_init_result
       changed_when: kubeadm_init_result.rc == 0
 
@@ -398,6 +413,16 @@
       register: k8s_flannel_apply
       changed_when: k8s_flannel_apply.rc == 0
 
+    - name: "Wait for Flannel DaemonSet rollout"
+      when: k8s_install_flannel
+      ansible.builtin.command: >-
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf
+        -n {{ k8s_flannel_namespace }}
+        rollout status ds/{{ k8s_flannel_ds_name }}
+        --timeout=300s
+      register: k8s_flannel_rollout
+      changed_when: false
+
 - name: "Kubernetes | Workers | Join cluster"
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
@@ -449,3 +474,28 @@
         {{ hostvars[groups[k8s_control_plane_group][0]].k8s_join_command }}
       register: kubeadm_join_result
       changed_when: kubeadm_join_result.rc == 0
+
+    - name: "Setup kubeconfig on worker"
+      when:
+        - k8s_kubeconfig_setup
+        - groups[k8s_control_plane_group] | default([]) | length > 0
+      block:
+        - name: "Ensure .kube directory exists on worker"
+          ansible.builtin.file:
+            path: /root/.kube
+            state: directory
+            mode: '0750'
+
+        - name: "Fetch kubeconfig from control plane"
+          ansible.builtin.slurp:
+            src: /etc/kubernetes/admin.conf
+          delegate_to: "{{ groups[k8s_control_plane_group][0] }}"
+          register: k8s_worker_kubeconfig
+
+        - name: "Write kubeconfig on worker"
+          ansible.builtin.copy:
+            content: "{{ k8s_worker_kubeconfig.content | b64decode }}"
+            dest: /root/.kube/config
+            owner: root
+            group: root
+            mode: '0640'
