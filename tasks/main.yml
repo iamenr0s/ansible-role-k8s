@@ -518,7 +518,7 @@
         - name: "Fetch kubeconfig from control plane"
           ansible.builtin.slurp:
             src: /etc/kubernetes/admin.conf
-          delegate_to: "{{ groups[k8s_control_plane_group][0] }}"
+          delegate_to: "{{ (groups[k8s_control_plane_group] | default([]) | first) | default(omit) }}"
           register: k8s_worker_kubeconfig
 
         - name: "Write kubeconfig on worker"
