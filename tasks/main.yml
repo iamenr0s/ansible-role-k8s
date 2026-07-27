@@ -4,8 +4,9 @@
 - name: "Kubernetes | Debian/Ubuntu | Configure repo and install packages"
   when:
     - k8s_manage_repos
-    - ansible_os_family == 'Debian'
+    - ansible_facts['os_family'] == 'Debian'
   become: true
+  tags: [k8s]
   block:
     - name: "Install gnupg for key dearmor"
       ansible.builtin.apt:
@@ -53,7 +54,8 @@
 - name: "Kubernetes | Fedora | Configure repo and install packages"
   when:
     - k8s_manage_repos
-    - ansible_distribution == 'Fedora'
+    - ansible_facts['distribution'] == 'Fedora'
+  tags: [k8s]
   block:
     - name: "Configure Kubernetes repo on Fedora"
       ansible.builtin.yum_repository:
@@ -74,8 +76,9 @@
 - name: "Kubernetes | RHEL/Fedora | Configure repo and install packages"
   when:
     - k8s_manage_repos
-    - ansible_os_family in ['RedHat']
-    - ansible_distribution != 'Fedora'
+    - ansible_facts['os_family'] in ['RedHat']
+    - ansible_facts['distribution'] != 'Fedora'
+  tags: [k8s]
   block:
     - name: "Include pkg-management role for RHEL/Fedora"
       ansible.builtin.include_role:
@@ -95,12 +98,14 @@
 - name: "Kubernetes | Enable and start kubelet"
   when:
     - k8s_enable_kubelet
+  tags: [k8s]
   ansible.builtin.systemd:
     name: kubelet
     enabled: true
     state: started
 
 - name: "Kubernetes | System | Ensure memory cgroup enabled"
+  tags: [k8s]
   block:
     - name: "Check cgroup v2 controllers"
       ansible.builtin.command: cat /sys/fs/cgroup/cgroup.controllers
@@ -115,7 +120,7 @@
 
     - name: "Enable memory cgroup on Debian/Ubuntu"
       when:
-        - ansible_os_family == 'Debian'
+        - ansible_facts['os_family'] == 'Debian'
         - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
         - not k8s_cgroup1_memory_dir.stat.exists
       block:
@@ -139,12 +144,12 @@
 
     - name: "Enable memory cgroup on RHEL/Fedora"
       when:
-        - ansible_os_family in ['RedHat']
+        - ansible_facts['os_family'] in ['RedHat']
         - (k8s_cgroup2_controllers.stdout is not defined) or ('memory' not in k8s_cgroup2_controllers.stdout)
         - not k8s_cgroup1_memory_dir.stat.exists
       block:
         - name: "Ensure grubby is installed"
-          when: ansible_distribution == 'Fedora'
+          when: ansible_facts['distribution'] == 'Fedora'
           ansible.builtin.include_role:
             name: iamenr0s.ansible_role_pkg_management
           vars:
@@ -152,25 +157,27 @@
               - grubby
 
         - name: "Check grubby path (sbin)"
-          when: ansible_distribution == 'Fedora'
+          when: ansible_facts['distribution'] == 'Fedora'
           ansible.builtin.stat:
             path: /usr/sbin/grubby
           register: k8s_grubby_sbin
 
         - name: "Check grubby path (bin)"
-          when: ansible_distribution == 'Fedora'
+          when: ansible_facts['distribution'] == 'Fedora'
           ansible.builtin.stat:
             path: /usr/bin/grubby
           register: k8s_grubby_bin
 
         - name: "Update kernel args with grubby"
-          when: ansible_distribution == 'Fedora' and (k8s_grubby_sbin.stat.exists or k8s_grubby_bin.stat.exists)
+          when:
+            - ansible_facts['distribution'] == 'Fedora'
+            - k8s_grubby_sbin.stat.exists or k8s_grubby_bin.stat.exists
           ansible.builtin.command: grubby --update-kernel=ALL --args="cgroup_memory=1 cgroup_enable=memory systemd.unified_cgroup_hierarchy=1"
           register: k8s_grubby_update
           changed_when: k8s_grubby_update.rc == 0
 
         - name: "Ensure grub2 tools installed"
-          when: ansible_distribution != 'Fedora'
+          when: ansible_facts['distribution'] != 'Fedora'
           ansible.builtin.include_role:
             name: iamenr0s.ansible_role_pkg_management
           vars:
@@ -190,11 +197,11 @@
 
         - name: "Detect grub config (UEFI vendor)"
           ansible.builtin.stat:
-            path: "/boot/efi/EFI/{{ ansible_distribution | lower }}/grub.cfg"
+            path: "/boot/efi/EFI/{{ ansible_facts['distribution'] | lower }}/grub.cfg"
           register: k8s_grub_cfg_uefi_vendor
 
         - name: "Update GRUB cmdline for cgroups (EL)"
-          when: ansible_distribution != 'Fedora'
+          when: ansible_facts['distribution'] != 'Fedora'
           ansible.builtin.lineinfile:
             path: /etc/default/grub
             regexp: '^GRUB_CMDLINE_LINUX='
@@ -214,13 +221,17 @@
           changed_when: k8s_grub_mkconfig_uefi.rc == 0
 
         - name: "Reboot to apply cgroup settings (EL)"
-          when: (k8s_grubby_update.changed) or (k8s_grub_mkconfig_bios is defined and k8s_grub_mkconfig_bios.changed) or (k8s_grub_mkconfig_uefi is defined and k8s_grub_mkconfig_uefi.changed)
+          when: >-
+            (k8s_grubby_update.changed) or
+            (k8s_grub_mkconfig_bios is defined and k8s_grub_mkconfig_bios.changed) or
+            (k8s_grub_mkconfig_uefi is defined and k8s_grub_mkconfig_uefi.changed)
           ansible.builtin.reboot:
             reboot_timeout: 600
 
 - name: "Kubernetes | Control Plane | Configure firewalld and SELinux"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
+  tags: [k8s]
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_firewalld
   vars:
@@ -245,6 +256,7 @@
 - name: "Kubernetes | Workers | Configure firewalld and SELinux"
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
+  tags: [k8s]
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_firewalld
   vars:
@@ -262,6 +274,7 @@
 
 - name: "Kubernetes | System | Configure kernel networking prerequisites"
   when: k8s_configure_kernel_networking
+  tags: [k8s]
   ansible.builtin.include_role:
     name: iamenr0s.ansible_role_kernel_configuration
   vars:
@@ -279,6 +292,7 @@
 - name: "Kubernetes | Control Plane | Initialize cluster with kubeadm"
   when:
     - inventory_hostname in groups[k8s_control_plane_group] | default([])
+  tags: [k8s]
   block:
     - name: "Check if cluster already initialized"
       ansible.builtin.stat:
@@ -330,7 +344,13 @@
             - name: "Fail: memory cgroup not detected"
               when: not (k8s_allow_memcg_bypass | default(false))
               ansible.builtin.fail:
-                msg: "Memory cgroup not detected. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before initializing Kubernetes. Set k8s_allow_memcg_bypass=true to bypass kubeadm preflight (not recommended)."
+                msg: >-
+                  Memory cgroup not detected. Ensure kernel args include
+                  cgroup_memory=1 cgroup_enable=memory or
+                  systemd.unified_cgroup_hierarchy=1 and reboot the host
+                  before initializing Kubernetes. Set
+                  k8s_allow_memcg_bypass=true to bypass kubeadm preflight
+                  (not recommended).
 
             - name: "Warn and bypass kubeadm preflight for SystemVerification"
               when: k8s_allow_memcg_bypass | default(false)
@@ -340,7 +360,10 @@
             - name: "Auto-set preflight ignore for SystemVerification"
               when: k8s_allow_memcg_bypass | default(false)
               ansible.builtin.set_fact:
-                k8s_ignore_preflight_errors: "{{ (k8s_ignore_preflight_errors | default('')) if ((k8s_ignore_preflight_errors | default('')) | length > 0) else 'SystemVerification' }}"
+                k8s_ignore_preflight_errors: >-
+                  {{ (k8s_ignore_preflight_errors | default(''))
+                     if ((k8s_ignore_preflight_errors | default('')) | length > 0)
+                     else 'SystemVerification' }}
 
     - name: "Generate kubeadm init config"
       when: not k8s_admin_conf.stat.exists
@@ -426,6 +449,7 @@
 - name: "Kubernetes | Workers | Join cluster"
   when:
     - inventory_hostname in groups[k8s_workers_group] | default([])
+  tags: [k8s]
   block:
     - name: "Verify memory cgroup availability (workers)"
       block:
@@ -453,7 +477,12 @@
             - name: "Fail: memory cgroup not detected (workers)"
               when: not (k8s_allow_memcg_bypass | default(false))
               ansible.builtin.fail:
-                msg: "Memory cgroup not detected on worker. Ensure kernel args include cgroup_memory=1 cgroup_enable=memory or systemd.unified_cgroup_hierarchy=1 and reboot the host before joining Kubernetes. Set k8s_allow_memcg_bypass=true to bypass (not recommended)."
+                msg: >-
+                  Memory cgroup not detected on worker. Ensure kernel args
+                  include cgroup_memory=1 cgroup_enable=memory or
+                  systemd.unified_cgroup_hierarchy=1 and reboot the host
+                  before joining Kubernetes. Set k8s_allow_memcg_bypass=true
+                  to bypass (not recommended).
 
             - name: "Warn and bypass kubeadm preflight for SystemVerification (workers)"
               when: k8s_allow_memcg_bypass | default(false)

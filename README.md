@@ -1,4 +1,4 @@
-[![Molecule](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml) [![Release](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/release.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/release.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/ansible_role_k8s) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s)
+[![Molecule](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-k8s/actions/workflows/molecule.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/ansible_role_k8s) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-k8s)
 
 # Ansible Role: Kubernetes
 Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RHEL/Fedora.
@@ -21,26 +21,38 @@ Manage Kubernetes installation and cluster bootstrap across Debian/Ubuntu and RH
 
 ## Supported Platforms
 
-- Ubuntu 20.04, 22.04, 24.04
-- Debian 10, 11, 12
-- RHEL 8, 9, 10
-- Rocky Linux 8, 9, 10
-- AlmaLinux 8, 9, 10
-- Fedora 39, 40, 41, 42
+- Ubuntu 22.04, 24.04
+- Debian 12, 13
+- RHEL/AlmaLinux/Rocky Linux 8, 9, 10
+- Fedora 42, 43, 44
+
+Note: platforms in `meta/main.yml` reflect Galaxy metadata; this list is kept in sync with the CI matrix in `.github/workflows/molecule.yml`.
 
 ## Role Variables
 
-### Basic Configuration
+Defined in `defaults/main.yml`:
 
 - `k8s_version_channel` (string, default: `v1.32`): Repository channel version.
 - `k8s_packages` (list, default: `[kubelet, kubeadm, kubectl]`): Packages to install.
 - `k8s_manage_repos` (bool, default: `true`): Manage repos inside this role.
 - `k8s_enable_kubelet` (bool, default: `true`): Enable and start kubelet.
-- `k8s_use_pod_cidr` (bool, default: `false`): Include `--pod-network-cidr` in `kubeadm init`.
-- `k8s_apt_key_dest` (string): Path to apt keyring.
-- `k8s_apt_repo_filename` (string): Apt sources filename.
-- `k8s_yum_repo_name` (string): YUM/DNF repo name.
-- `k8s_disable_excludes` (string, default: `all`): Pass-through to disable repo excludes for DNF/YUM operations.
+- `k8s_apt_key_dest` (string, default: `/etc/apt/keyrings/kubernetes-apt-keyring.gpg`): Path to apt keyring (Debian/Ubuntu).
+- `k8s_apt_repo_filename` (string, default: `kubernetes.list`): Apt sources filename (Debian/Ubuntu).
+- `k8s_yum_repo_name` (string, default: `kubernetes`): YUM/DNF repo name (RHEL/Fedora).
+- `k8s_disable_excludes` (string, default: `all`): Pass-through to disable repo excludes for DNF operations.
+- `k8s_control_plane_group` (string, default: `masters`): Inventory group identifying control-plane hosts.
+- `k8s_workers_group` (string, default: `workers`): Inventory group identifying worker hosts.
+- `k8s_control_plane_endpoint` (string, default: empty): Load-balancer endpoint for HA control planes, e.g. `lb.example.com:6443`.
+- `k8s_use_pod_cidr` (bool, default: `false`): Include `--pod-network-cidr` in `kubeadm init` (usually keep `false` for Cilium).
+- `k8s_pod_network_cidr` (string, default: `10.244.0.0/16`): Pod network CIDR used when `k8s_use_pod_cidr` is `true`.
+- `k8s_init_extra_args` (string, default: empty): Additional arguments appended to `kubeadm init`.
+- `k8s_join_extra_args` (string, default: empty): Additional arguments appended to `kubeadm join`.
+- `k8s_kubeconfig_setup` (bool, default: `true`): Copy `admin.conf` to root's `.kube/config`.
+- `k8s_configure_kernel_networking` (bool, default: `false`): Configure `br_netfilter`/`overlay`/sysctl kernel prerequisites (set `true` when not managed by a separate role or host setup).
+- `k8s_install_flannel` (bool, default: `true`): Install the Flannel CNI on the control plane.
+- `k8s_flannel_manifest_url` (string, default: Flannel v0.25.5 manifest): URL of the Flannel manifest to apply.
+- `k8s_flannel_namespace` (string, default: `kube-flannel`): Namespace Flannel is installed into.
+- `k8s_flannel_ds_name` (string, default: `kube-flannel-ds`): Name of the Flannel DaemonSet.
 - `k8s_disable_swap` (bool, default: `true`): Disable swap and update fstab before init.
 - `k8s_ignore_preflight_errors` (string, default: empty): Add to kubeadm init via `--ignore-preflight-errors`.
 
@@ -170,14 +182,28 @@ MIT
 Author: iamenr0s
 Galaxy: `iamenr0s.ansible_role_k8s`
 
-## Contributing
+## Contributing & Security
 
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+- Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+- Report vulnerabilities privately per [SECURITY.md](SECURITY.md); do not open public issues for them.
+
+## CI & Release (maintainers)
+
+A single workflow (`.github/workflows/molecule.yml`) runs lint and the full Molecule distro matrix on pushes to `main`, PRs, and `v*` tags. On `v*` tags, a `release` job publishes to Ansible Galaxy after all tests pass.
+
+The Galaxy API key lives in the `galaxy` GitHub environment, which only `v*` tags may target. One-time setup:
+
+```bash
+# Galaxy publishing key (environment-scoped, get it from galaxy.ansible.com/ui/token)
+gh secret set GALAXY_API_KEY --env galaxy --repo iamenr0s/ansible-role-k8s
+
+# Code scanning notifications (Slack webhook URL; for Discord append /slack to the webhook URL)
+gh secret set SECURITY_ALERT_WEBHOOK --env galaxy --repo iamenr0s/ansible-role-k8s
+```
+
+`.github/workflows/code-scanning-notify.yml` polls the code-scanning API every 6 hours and posts new or updated open alerts to that webhook (GitHub Actions cannot trigger on `code_scanning_alert` directly).
+
+To release: tag a commit `vX.Y.Z` and push the tag — CI gates the Galaxy publish.
 
 ## Changelog
 

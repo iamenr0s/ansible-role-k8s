@@ -1,0 +1,53 @@
+---
+
+# The default Molecule instance is a single ungrouped host, so
+# k8s_control_plane_group/k8s_workers_group never match anything here —
+# the kubeadm init/join and Flannel tasks in tasks/main.yml never execute
+# in this scenario (this role also installs no container runtime, so
+# kubeadm init would fail in any single-container topology regardless).
+# Only assert what this converge actually exercises: repo/package install
+# and kubelet enablement. Do NOT add assertions for admin.conf, join
+# state, or Flannel here — they would either always fail (nothing ran) or
+# require faking group membership, which doesn't make kubeadm init work
+# without a CRI anyway.
+
+- name: Verify
+  hosts: all
+  gather_facts: true
+  become: false
+
+  tasks:
+    - name: Verify | Gather package facts
+      ansible.builtin.package_facts:
+
+    - name: Verify | Assert Kubernetes packages are installed
+      ansible.builtin.assert:
+        that:
+          - "'kubelet' in ansible_facts.packages"
+          - "'kubeadm' in ansible_facts.packages"
+          - "'kubectl' in ansible_facts.packages"
+        fail_msg: "kubelet/kubeadm/kubectl were not all installed by the role"
+
+    - name: Verify | Gather service facts
+      ansible.builtin.service_facts:
+
+    - name: Verify | Assert kubelet unit is enabled
+      ansible.builtin.assert:
+        that:
+          - "'kubelet.service' in ansible_facts.services"
+          - "ansible_facts.services['kubelet.service'].status == 'enabled'"
+        fail_msg: "kubelet.service is not enabled"
+
+    - name: Verify | Debian/Ubuntu | Assert apt keyring file exists
+      when: ansible_facts['os_family'] == 'Debian'
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: __verify_apt_keyring
+      failed_when: not __verify_apt_keyring.stat.exists
+
+    - name: Verify | RHEL/Fedora | Assert yum repo file exists
+      when: ansible_facts['os_family'] == 'RedHat'
+      ansible.builtin.stat:
+        path: /etc/yum.repos.d/kubernetes.repo
+      register: __verify_yum_repo
+      failed_when: not __verify_yum_repo.stat.exists

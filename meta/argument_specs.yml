@@ -1,0 +1,108 @@
+---
+
+argument_specs:
+  main:
+    short_description: >-
+      Installs kubelet/kubeadm/kubectl and bootstraps a Kubernetes cluster
+      on Debian/Ubuntu and RHEL/Fedora hosts.
+    options:
+      k8s_version_channel:
+        description: Channel version used for pkgs.k8s.io repositories.
+        type: str
+        default: "v1.32"
+      k8s_packages:
+        description: Packages to install.
+        type: list
+        elements: str
+        default:
+          - kubelet
+          - kubeadm
+          - kubectl
+      k8s_manage_repos:
+        description: Manage repository configuration inside this role.
+        type: bool
+        default: true
+      k8s_enable_kubelet:
+        description: Enable and start kubelet after installation.
+        type: bool
+        default: true
+      k8s_apt_key_dest:
+        description: Destination path for the apt keyring (Debian/Ubuntu).
+        type: str
+        default: "/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+      k8s_apt_repo_filename:
+        description: Filename for the apt repo list (Debian/Ubuntu).
+        type: str
+        default: "kubernetes.list"
+      k8s_yum_repo_name:
+        description: Name of the yum/dnf repo file (RHEL/Fedora).
+        type: str
+        default: "kubernetes"
+      k8s_disable_excludes:
+        description: Value passed to dnf's disable_excludes.
+        type: str
+        default: "all"
+      k8s_control_plane_group:
+        description: Inventory group name identifying control-plane hosts.
+        type: str
+        default: "masters"
+      k8s_workers_group:
+        description: Inventory group name identifying worker hosts.
+        type: str
+        default: "workers"
+      k8s_control_plane_endpoint:
+        description: >-
+          Load-balancer endpoint for HA control planes, e.g.
+          "lb.example.com:6443".
+        type: str
+        default: ""
+      k8s_use_pod_cidr:
+        description: >-
+          Whether to pass a pod network CIDR to kubeadm init (usually false
+          for Cilium).
+        type: bool
+        default: false
+      k8s_pod_network_cidr:
+        description: Pod network CIDR used when k8s_use_pod_cidr is true.
+        type: str
+        default: "10.244.0.0/16"
+      k8s_init_extra_args:
+        description: Additional arguments appended to kubeadm init.
+        type: str
+        default: ""
+      k8s_join_extra_args:
+        description: Additional arguments appended to kubeadm join.
+        type: str
+        default: ""
+      k8s_kubeconfig_setup:
+        description: Copy admin.conf to root's .kube/config.
+        type: bool
+        default: true
+      k8s_configure_kernel_networking:
+        description: Configure br_netfilter/overlay/sysctl kernel prerequisites.
+        type: bool
+        default: false
+      k8s_install_flannel:
+        description: Install the Flannel CNI on the control plane.
+        type: bool
+        default: true
+      k8s_flannel_manifest_url:
+        description: URL of the Flannel manifest to apply.
+        type: str
+        default: "https://raw.githubusercontent.com/flannel-io/flannel/v0.25.5/Documentation/kube-flannel.yml"
+      k8s_flannel_namespace:
+        description: Namespace Flannel is installed into.
+        type: str
+        default: "kube-flannel"
+      k8s_flannel_ds_name:
+        description: Name of the Flannel DaemonSet.
+        type: str
+        default: "kube-flannel-ds"
+      k8s_disable_swap:
+        description: Disable swap on control-plane hosts (required by kubelet).
+        type: bool
+        default: true
+      k8s_ignore_preflight_errors:
+        description: Value passed to kubeadm's --ignore-preflight-errors.
+        type: str
+        default: ""

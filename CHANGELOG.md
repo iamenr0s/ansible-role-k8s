@@ -5,6 +5,11 @@ This project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Standardized repo tooling to match the `ansible-role-upgrade` golden baseline: consolidated CI into a single `lint → molecule → release` workflow (previously two workflows), replaced the `.ansible-lint` scaffold-default with a real config, added `.pre-commit-config.yaml`, `renovate.json`, community health files, `meta/argument_specs.yml`, and project-local `.claude/` tooling (skills/agent/CLAUDE.md).
+- Reduced the supported-distro scope in `meta/main.yml`/README/CI matrix to a rolling two-version window (Debian 12/13, EL 8/9/10, Fedora 42/43/44, Ubuntu 22.04/24.04), dropping EOL/non-LTS entries (Debian 11 "bullseye", Ubuntu 20.04 "focal" and 22.10 "kinetic", Fedora 39-41). Nothing in `tasks/main.yml` special-cased the dropped versions.
+- Reworked the Molecule harness: `molecule.yml` now uses `extra_opts: ["--cgroupns=host"]` instead of `cgroupns_mode: host` (schema compatibility with current molecule-plugins), `converge.yml` bootstraps Python 3 via `raw` and gathers facts explicitly, and a new `verify.yml` asserts package/service state (the removed `prepare.yml` was dead weight — never wired into the provisioner).
+
 ## [1.0.4] - 2026-04-06
 
 ### Added

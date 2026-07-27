@@ -1,4 +1,21 @@
 ---
 
-# Example Playbook for ...
-# This playbook demonstrates various usage scenarios
+# Example playbook: install Kubernetes packages, initialize the control
+# plane with kubeadm, install Flannel, and join workers. Pair with
+# examples/inventory.yml.
+
+- name: Bootstrap Kubernetes cluster
+  hosts: masters:workers
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: iamenr0s.ansible_role_k8s
+      vars:
+        k8s_version_channel: v1.32
+        k8s_manage_repos: true
+        k8s_control_plane_group: masters
+        k8s_workers_group: workers
+        k8s_install_flannel: true
+        k8s_use_pod_cidr: true
+        k8s_pod_network_cidr: 10.244.0.0/16
