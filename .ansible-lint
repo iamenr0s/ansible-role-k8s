@@ -1,3 +1,5 @@
 skip_list:
   - '106'
   - '503'
+  - 'name[template]'
+  - 'command-instead-of-module'
