@@ -151,6 +151,37 @@ Notes:
 - Workers consume the join command and run `kubeadm join` if not already part of the cluster.
 - You can add extra flags via `k8s_init_extra_args` and `k8s_join_extra_args`.
 
+### Rolling Upgrade
+
+Upgrade an already-bootstrapped cluster to a new Kubernetes version, one
+node at a time (control plane first, then each worker). This is opt-in and
+never runs during a normal bootstrap:
+
+```
+- hosts: masters:workers
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: ansible-role-k8s
+      vars:
+        k8s_version_channel: v1.33   # bump if crossing a minor version
+        k8s_upgrade_enabled: true
+        k8s_upgrade_version: "1.33.1"
+```
+
+Run with `--tags k8s-upgrade` to skip the (idempotent, but unnecessary)
+repo/package-install tasks and go straight to the upgrade:
+
+```
+ansible-playbook site.yml --tags k8s-upgrade
+```
+
+Nodes already running `k8s_upgrade_version` are skipped automatically, so a
+partially-completed rolling upgrade can be safely re-run. A failed drain or
+`kubeadm upgrade` stops the rollout at that node — this role does not
+attempt automatic rollback; fix the underlying issue and re-run.
+
 ## Firewall and SELinux
 - SELinux: set to `permissive` on all nodes.
 - Control-plane firewall ports (zone `public`):
