@@ -106,3 +106,19 @@ argument_specs:
         description: Value passed to kubeadm's --ignore-preflight-errors.
         type: str
         default: ""
+      k8s_upgrade_enabled:
+        description: >-
+          Enable the rolling kubeadm/kubelet/kubectl upgrade path (opt-in;
+          runs kubeadm's own upgrade workflow one node at a time).
+        type: bool
+        default: false
+      k8s_upgrade_version:
+        description: >-
+          Target Kubernetes version for the rolling upgrade, e.g. "1.32.5"
+          (no leading "v"). Required when k8s_upgrade_enabled is true.
+        type: str
+        default: ""
+      k8s_upgrade_drain_timeout:
+        description: Timeout passed to `kubectl drain --timeout` during the rolling upgrade.
+        type: str
+        default: "300s"

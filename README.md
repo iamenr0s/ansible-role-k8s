@@ -55,6 +55,9 @@ Defined in `defaults/main.yml`:
 - `k8s_flannel_ds_name` (string, default: `kube-flannel-ds`): Name of the Flannel DaemonSet.
 - `k8s_disable_swap` (bool, default: `true`): Disable swap and update fstab before init.
 - `k8s_ignore_preflight_errors` (string, default: empty): Add to kubeadm init via `--ignore-preflight-errors`.
+- `k8s_upgrade_enabled` (bool, default: `false`): Enable the rolling kubeadm/kubelet/kubectl upgrade path (opt-in).
+- `k8s_upgrade_version` (string, default: empty): Target Kubernetes version for the rolling upgrade, e.g. `1.32.5` (no leading `v`). Required when `k8s_upgrade_enabled` is `true`.
+- `k8s_upgrade_drain_timeout` (string, default: `300s`): Timeout passed to `kubectl drain --timeout` during the rolling upgrade.
 
 ## Dependencies
 

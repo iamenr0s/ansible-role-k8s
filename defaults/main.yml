@@ -49,3 +49,11 @@ k8s_flannel_ds_name: "kube-flannel-ds"
 # System settings
 k8s_disable_swap: true
 k8s_ignore_preflight_errors: ""
+
+# Rolling upgrade (opt-in): upgrades kubeadm/kubelet/kubectl one node at a
+# time (control plane first, then each worker) using kubeadm's own upgrade
+# workflow. Disabled by default so normal bootstrap runs never touch an
+# existing cluster.
+k8s_upgrade_enabled: false
+k8s_upgrade_version: ""            # e.g. "1.32.5" (no leading "v"); required when k8s_upgrade_enabled is true
+k8s_upgrade_drain_timeout: "300s"  # passed to `kubectl drain --timeout`
