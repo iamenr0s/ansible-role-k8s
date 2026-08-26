@@ -528,3 +528,8 @@
             owner: root
             group: root
             mode: '0640'
+
+- name: "Kubernetes | Rolling upgrade"
+  when: k8s_upgrade_enabled
+  tags: [k8s, k8s-upgrade]
+  ansible.builtin.include_tasks: upgrade.yml
