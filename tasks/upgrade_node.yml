@@ -138,7 +138,7 @@
     - name: "Assert node upgraded to target version"
       ansible.builtin.assert:
         that:
-          - k8s_upgrade_version in k8s_upgrade_reported_version.stdout
+          - (k8s_upgrade_reported_version.stdout | regex_replace('^v', '') | regex_replace('-.*$', '')) == k8s_upgrade_version
         fail_msg: >-
           {{ k8s_upgrade_node_name }} reports kubeletVersion
           {{ k8s_upgrade_reported_version.stdout }}, expected {{ k8s_upgrade_version }}.
