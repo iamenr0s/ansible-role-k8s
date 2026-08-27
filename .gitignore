@@ -40,6 +40,8 @@ htmlcov/
 .claude/
 .remember/
 CLAUDE.md
+docs/
+.superpowers/
 
 # Build outputs (if any)
 dist/
