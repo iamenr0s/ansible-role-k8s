@@ -177,6 +177,15 @@ repo/package-install tasks and go straight to the upgrade:
 ansible-playbook site.yml --tags k8s-upgrade
 ```
 
+**This shortcut only works for a patch-level upgrade within the same minor
+version** (e.g. `1.33.0` -> `1.33.1`), where the repo/keyring config already
+points at the right package repo. Crossing a minor version (as in the
+`k8s_version_channel: v1.33` example above) requires the repo config to be
+updated first — the `k8s-upgrade` tag alone never touches it, so
+`kubeadm={{ k8s_upgrade_version }}-*` would 404 against the old repo. For a
+minor-version bump, either run the full untagged playbook once first, or
+include the repo tasks explicitly: `--tags k8s,k8s-upgrade`.
+
 Nodes already running `k8s_upgrade_version` are skipped automatically, so a
 partially-completed rolling upgrade can be safely re-run. A failed drain or
 `kubeadm upgrade` stops the rollout at that node — this role does not
