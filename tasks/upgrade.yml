@@ -1,0 +1,32 @@
+---
+# Rolling upgrade (opt-in, see k8s_upgrade_enabled in defaults/main.yml).
+# Orchestrates a real `kubeadm upgrade`: the control-plane host first, then
+# every worker, one at a time, regardless of the calling playbook's
+# `serial:` setting. `run_once` + `loop` on an `include_tasks` is the
+# standard Ansible pattern for "one driver host walks a list, delegating to
+# each target in turn" — it makes this rolling even when the play itself
+# runs across all hosts in parallel.
+
+- name: "Kubernetes | Upgrade | Validate required variables"
+  run_once: true
+  ansible.builtin.assert:
+    that:
+      - k8s_upgrade_version | length > 0
+      - k8s_upgrade_version is match('^[0-9]+\.[0-9]+\.[0-9]+$')
+    fail_msg: >-
+      k8s_upgrade_version must be set to a plain "MAJOR.MINOR.PATCH" version
+      (e.g. "1.32.5", no leading "v") when k8s_upgrade_enabled is true.
+
+- name: "Kubernetes | Upgrade | Build ordered host list (control plane first, then workers)"
+  run_once: true
+  ansible.builtin.set_fact:
+    k8s_upgrade_host_order: >-
+      {{ (groups[k8s_control_plane_group] | default([]))[:1]
+         + (groups[k8s_workers_group] | default([])) }}
+
+- name: "Kubernetes | Upgrade | Roll out one node at a time"
+  run_once: true
+  ansible.builtin.include_tasks: upgrade_node.yml
+  loop: "{{ k8s_upgrade_host_order }}"
+  loop_control:
+    loop_var: k8s_upgrade_target

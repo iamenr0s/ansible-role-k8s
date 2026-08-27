@@ -1,0 +1,163 @@
+---
+# Rolling upgrade | per-node steps. Included in a loop from upgrade.yml with
+# loop_var k8s_upgrade_target set to the inventory_hostname of the node to
+# upgrade. The caller sets run_once/loop; every task here executes once per
+# loop iteration, for that one node, before the next iteration starts.
+# run_once is also set explicitly on every top-level task/block below as a
+# defensive belt-and-braces measure (see design notes) — it is already
+# effectively true via inheritance from the calling include_tasks.
+
+- name: "Kubernetes | Upgrade | {{ k8s_upgrade_target }} | Gather facts for target"  # noqa: name[template]
+  run_once: true
+  ansible.builtin.setup:
+    gather_subset: ['!all', '!min', 'platform', 'distribution']
+  delegate_to: "{{ k8s_upgrade_target }}"
+  delegate_facts: true
+
+- name: "Kubernetes | Upgrade | {{ k8s_upgrade_target }} | Determine current kubelet version"  # noqa: name[template]
+  run_once: true
+  ansible.builtin.package_facts:
+    manager: auto
+  delegate_to: "{{ k8s_upgrade_target }}"
+  register: k8s_upgrade_pkg_facts
+
+- name: "Kubernetes | Upgrade | {{ k8s_upgrade_target }} | Set current version fact"  # noqa: name[template]
+  run_once: true
+  ansible.builtin.set_fact:
+    k8s_upgrade_current_version: "{{ (k8s_upgrade_pkg_facts.ansible_facts.packages['kubelet'][0].version | regex_replace('-.*$', '')) if 'kubelet' in k8s_upgrade_pkg_facts.ansible_facts.packages else '' }}"
+    k8s_upgrade_target_at_version: "{{ (k8s_upgrade_pkg_facts.ansible_facts.packages['kubelet'][0].version | regex_replace('-.*$', '')) == k8s_upgrade_version if 'kubelet' in k8s_upgrade_pkg_facts.ansible_facts.packages else false }}"
+
+- name: "Kubernetes | Upgrade | {{ k8s_upgrade_target }} | Already at target version"  # noqa: name[template]
+  run_once: true
+  when: k8s_upgrade_target_at_version
+  ansible.builtin.debug:
+    msg: "{{ k8s_upgrade_target }} already at kubelet {{ k8s_upgrade_current_version }}, skipping."
+
+- name: "Get node name as registered in the cluster"
+  run_once: true
+  ansible.builtin.set_fact:
+    k8s_upgrade_node_name: "{{ hostvars[k8s_upgrade_target]['ansible_facts']['nodename'] }}"
+
+- name: "Kubernetes | Upgrade | {{ k8s_upgrade_target }} | Upgrade this node"  # noqa: name[template]
+  run_once: true
+  when: not k8s_upgrade_target_at_version
+  block:
+    - name: "Debian/Ubuntu | Upgrade kubeadm package"
+      when: hostvars[k8s_upgrade_target]['ansible_facts']['os_family'] == 'Debian'
+      ansible.builtin.apt:
+        name: "kubeadm={{ k8s_upgrade_version }}-*"
+        state: present
+        update_cache: true
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "Fedora | Upgrade kubeadm package"
+      when: hostvars[k8s_upgrade_target]['ansible_facts']['distribution'] == 'Fedora'
+      ansible.builtin.dnf:
+        name: "kubeadm-{{ k8s_upgrade_version }}*"
+        state: present
+        disable_excludes: "{{ k8s_disable_excludes }}"
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "RHEL family (non-Fedora) | Upgrade kubeadm package"
+      when:
+        - hostvars[k8s_upgrade_target]['ansible_facts']['os_family'] == 'RedHat'
+        - hostvars[k8s_upgrade_target]['ansible_facts']['distribution'] != 'Fedora'
+      ansible.builtin.include_role:
+        name: iamenr0s.ansible_role_pkg_management
+      vars:
+        pkg_install:
+          - "kubeadm-{{ k8s_upgrade_version }}*"
+        pkg_disable_excludes: "{{ k8s_disable_excludes }}"
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "Control plane | kubeadm upgrade apply"
+      when: k8s_upgrade_target == k8s_upgrade_host_order[0]
+      ansible.builtin.command: "kubeadm upgrade apply v{{ k8s_upgrade_version }} -y"  # noqa: command-instead-of-module
+      delegate_to: "{{ k8s_upgrade_target }}"
+      changed_when: true
+
+    - name: "Worker | kubeadm upgrade node"
+      when: k8s_upgrade_target != k8s_upgrade_host_order[0]
+      ansible.builtin.command: kubeadm upgrade node  # noqa: command-instead-of-module
+      delegate_to: "{{ k8s_upgrade_target }}"
+      changed_when: true
+
+    - name: "Drain node"  # noqa: command-instead-of-module
+      ansible.builtin.command: >-
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf drain {{ k8s_upgrade_node_name }}
+        --ignore-daemonsets --delete-emptydir-data --force
+        --timeout={{ k8s_upgrade_drain_timeout }}
+      delegate_to: "{{ k8s_upgrade_host_order[0] }}"
+      changed_when: true
+
+    - name: "Debian/Ubuntu | Upgrade kubelet and kubectl packages"
+      when: hostvars[k8s_upgrade_target]['ansible_facts']['os_family'] == 'Debian'
+      ansible.builtin.apt:
+        name:
+          - "kubelet={{ k8s_upgrade_version }}-*"
+          - "kubectl={{ k8s_upgrade_version }}-*"
+        state: present
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "Fedora | Upgrade kubelet and kubectl packages"
+      when: hostvars[k8s_upgrade_target]['ansible_facts']['distribution'] == 'Fedora'
+      ansible.builtin.dnf:
+        name:
+          - "kubelet-{{ k8s_upgrade_version }}*"
+          - "kubectl-{{ k8s_upgrade_version }}*"
+        state: present
+        disable_excludes: "{{ k8s_disable_excludes }}"
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "RHEL family (non-Fedora) | Upgrade kubelet and kubectl packages"
+      when:
+        - hostvars[k8s_upgrade_target]['ansible_facts']['os_family'] == 'RedHat'
+        - hostvars[k8s_upgrade_target]['ansible_facts']['distribution'] != 'Fedora'
+      ansible.builtin.include_role:
+        name: iamenr0s.ansible_role_pkg_management
+      vars:
+        pkg_install:
+          - "kubelet-{{ k8s_upgrade_version }}*"
+          - "kubectl-{{ k8s_upgrade_version }}*"
+        pkg_disable_excludes: "{{ k8s_disable_excludes }}"
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+    - name: "Restart kubelet"
+      ansible.builtin.systemd:
+        name: kubelet
+        state: restarted
+        daemon_reload: true
+      delegate_to: "{{ k8s_upgrade_target }}"
+
+- name: "Uncordon node"  # noqa: command-instead-of-module
+  run_once: true
+  ansible.builtin.command: >-
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf uncordon {{ k8s_upgrade_node_name }}
+  delegate_to: "{{ k8s_upgrade_host_order[0] }}"
+  changed_when: true
+
+- name: "Wait for node to report Ready"  # noqa: command-instead-of-module
+  run_once: true
+  ansible.builtin.command: >-
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf wait
+    --for=condition=Ready node/{{ k8s_upgrade_node_name }} --timeout=300s
+  delegate_to: "{{ k8s_upgrade_host_order[0] }}"
+  changed_when: false
+
+- name: "Verify reported kubelet version"  # noqa: command-instead-of-module
+  run_once: true
+  ansible.builtin.command: >-
+    kubectl --kubeconfig=/etc/kubernetes/admin.conf get node {{ k8s_upgrade_node_name }}
+    -o jsonpath={.status.nodeInfo.kubeletVersion}
+  delegate_to: "{{ k8s_upgrade_host_order[0] }}"
+  register: k8s_upgrade_reported_version
+  changed_when: false
+
+- name: "Assert node upgraded to target version"
+  run_once: true
+  ansible.builtin.assert:
+    that:
+      - (k8s_upgrade_reported_version.stdout | regex_replace('^v', '') | regex_replace('-.*$', '')) == k8s_upgrade_version
+    fail_msg: >-
+      {{ k8s_upgrade_node_name }} reports kubeletVersion
+      {{ k8s_upgrade_reported_version.stdout }}, expected {{ k8s_upgrade_version }}.
